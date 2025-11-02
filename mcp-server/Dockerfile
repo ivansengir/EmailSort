@@ -33,13 +33,13 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
+# Copy source code BEFORE npm install (needed for prepare script)
+COPY . .
+
 # Install ALL dependencies (including TypeScript for build)
 RUN npm install
 
-# Copy source
-COPY . .
-
-# Build TypeScript
+# Build TypeScript (may already be done by prepare script, but ensure it's built)
 RUN npm run build
 
 # Remove dev dependencies after build
