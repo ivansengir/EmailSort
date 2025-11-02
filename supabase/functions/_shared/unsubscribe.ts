@@ -158,11 +158,12 @@ export async function attemptUnsubscribe(html: string | null, text: string | nul
           if (mcpServerUrl) {
             try {
               console.log("[unsubscribe] 🤖 Calling MCP server for automated interaction...");
+              console.log("[unsubscribe] ⏱ This may take 30-90 seconds on first request (server wake-up + browser launch)...");
               const mcpResponse = await fetch(`${mcpServerUrl}/unsubscribe`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: finalUrl }),
-                signal: AbortSignal.timeout(45000) // 45 second timeout
+                signal: AbortSignal.timeout(90000) // 90 second timeout (allows for Render cold start + Puppeteer)
               });
               
               if (mcpResponse.ok) {

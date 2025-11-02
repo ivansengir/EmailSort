@@ -43,8 +43,8 @@ async function autoUnsubscribe(url: string): Promise<{
     
     console.log(`[Server] Navigating to: ${url}`);
     await page.goto(url, { 
-      waitUntil: 'networkidle2',
-      timeout: 30000 
+      waitUntil: 'domcontentloaded', // Faster than networkidle2, good enough for forms
+      timeout: 60000 // 60 seconds for slow pages like MediaMarkt
     });
     
     await new Promise(resolve => setTimeout(resolve, 2000));

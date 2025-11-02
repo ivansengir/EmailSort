@@ -61,8 +61,8 @@ async function autoUnsubscribe(url: string): Promise<{
     
     console.error(`[MCP] Navigating to: ${url}`);
     await page.goto(url, { 
-      waitUntil: 'networkidle2',
-      timeout: 30000 
+      waitUntil: 'domcontentloaded', // Faster than networkidle2, good enough for forms
+      timeout: 60000 // 60 seconds for slow pages like MediaMarkt
     });
     
     // Wait a bit for any dynamic content
