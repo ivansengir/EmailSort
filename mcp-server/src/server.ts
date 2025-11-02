@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import express from 'express';
+import express, { Request, Response } from 'express';
 import fetch from 'node-fetch';
 
 const app = express();
@@ -194,7 +194,7 @@ async function autoUnsubscribeWithBrowserless(url: string): Promise<{
       throw new Error(`Browserless API error: ${response.status}`);
     }
     
-    const result = await response.json();
+    const result = await response.json() as { success: boolean; method: string; message: string };
     console.log('[Server] Browserless result:', result);
     
     return result;
@@ -210,7 +210,7 @@ async function autoUnsubscribeWithBrowserless(url: string): Promise<{
 }
 
 // Health check endpoint
-app.get('/health', (req: any, res: any) => {
+app.get('/health', (req: Request, res: Response) => {
   res.json({ 
     status: 'ok', 
     service: 'emailsort-unsubscribe',
@@ -219,7 +219,7 @@ app.get('/health', (req: any, res: any) => {
 });
 
 // Main unsubscribe endpoint
-app.post('/unsubscribe', async (req: any, res: any) => {
+app.post('/unsubscribe', async (req: Request, res: Response) => {
   const { url } = req.body;
   
   if (!url) {
