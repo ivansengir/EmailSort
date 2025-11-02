@@ -69,7 +69,8 @@ serve(async (req: Request) => {
     return errorResponse("Invalid request", 400);
   }
 
-  console.log(`[bulk-actions] Action: ${payload.action}, Email IDs: ${payload.emailIds.length}`);
+  console.log(`[bulk-actions] Action: ${payload.action}, Email IDs count: ${payload.emailIds.length}`);
+  console.log(`[bulk-actions] Email IDs received:`, payload.emailIds);
 
   const { data: emails, error: emailError } = await supabase
     .from("emails")
@@ -114,6 +115,8 @@ serve(async (req: Request) => {
   const results: ActionResult[] = [];
 
   for (const email of typedEmails) {
+    console.log(`[bulk-actions] Processing email ID: ${email.id}, from: ${email.gmail_account_id}`);
+    
     const account = accountMap.get(email.gmail_account_id);
     if (!account) {
       results.push({ emailId: email.id, status: "error", error: "Missing Gmail account" });
@@ -165,6 +168,7 @@ serve(async (req: Request) => {
         results.push({ emailId: email.id, status: "deleted" });
       } else if (payload.action === "unsubscribe") {
         console.log(`[bulk-actions] Attempting unsubscribe for email ${email.id}...`);
+        console.log(`[bulk-actions] Email ${email.id} - HTML length: ${email.content_html?.length || 0}, Text length: ${email.content_text?.length || 0}`);
         const attempt = await attemptUnsubscribe(email.content_html, email.content_text);
         const { error: logError } = await supabase
           .from("unsubscribe_logs")

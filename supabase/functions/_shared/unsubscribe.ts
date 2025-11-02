@@ -82,6 +82,8 @@ async function attemptAIFormSubmit(pageUrl: string, pageHtml: string): Promise<b
 
 export async function attemptUnsubscribe(html: string | null, text: string | null): Promise<UnsubscribeAttempt> {
   console.log("[unsubscribe] 🤖 Starting AI-powered unsubscribe...");
+  console.log("[unsubscribe] HTML content length:", html?.length || 0);
+  console.log("[unsubscribe] Text content length:", text?.length || 0);
 
   // STEP 1: Use AI to find the unsubscribe link
   const { link, method } = await extractUnsubscribeLinkWithAI(html, text);

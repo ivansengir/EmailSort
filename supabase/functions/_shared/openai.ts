@@ -138,6 +138,7 @@ Do not add any explanation, just the URL.`
 
   const result = completion.choices[0]?.message?.content?.trim() || "NO_LINK";
   console.log("[AI] Raw AI response:", result);
+  console.log("[AI] First 200 chars of email content:", emailContent.substring(0, 200));
 
   if (result === "NO_LINK" || result.includes("NO_LINK")) {
     console.log("[AI] ❌ AI couldn't find any unsubscribe link");
