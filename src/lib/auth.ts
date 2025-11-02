@@ -326,55 +326,30 @@ export async function syncPrimaryGmailAccount(user: User, session: Session): Pro
       return updated as GmailAccount;
     }
 
-    // Insert new account
-    console.log('[syncPrimaryGmailAccount] Inserting new account...');
-    const { data: inserted, error: insertError } = await supabase
+    // Use upsert to avoid 409 errors
+    console.log('[syncPrimaryGmailAccount] Upserting account...');
+    const { data: upserted, error: upsertError } = await supabase
       .from('gmail_accounts')
-      .insert({
+      .upsert({
         user_id: user.id,
         email: userEmail,
         oauth_token: providerToken,
         oauth_refresh_token: providerRefreshToken,
         token_expires_at: tokenExpiry,
         is_primary: true,
+      }, {
+        onConflict: 'user_id,email'
       })
       .select()
       .single();
 
-    if (insertError) {
-      // Si es un error de duplicado, intentar obtener la cuenta existente
-      if (insertError.code === '23505') {
-        console.log('[syncPrimaryGmailAccount] Duplicate detected, fetching existing...');
-        const { data: existingAccount } = await supabase
-          .from('gmail_accounts')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('email', userEmail)
-          .single();
-        
-        if (existingAccount) {
-          console.log('[syncPrimaryGmailAccount] Updating duplicate account');
-          // Actualizar tokens de la cuenta existente
-          const { data: updated } = await supabase
-            .from('gmail_accounts')
-            .update({
-              oauth_token: providerToken,
-              oauth_refresh_token: providerRefreshToken,
-              token_expires_at: tokenExpiry,
-            })
-            .eq('id', existingAccount.id)
-            .select()
-            .single();
-          
-          return (updated as GmailAccount) || (existingAccount as GmailAccount);
-        }
-      }
-      console.error('[syncPrimaryGmailAccount] Insert error:', insertError);
+    if (upsertError) {
+      console.error('[syncPrimaryGmailAccount] Upsert error:', upsertError);
       return null;
     }
 
-    console.log('[syncPrimaryGmailAccount] Inserted successfully');
-    return inserted as GmailAccount;
+    console.log('[syncPrimaryGmailAccount] Upserted successfully');
+    return upserted as GmailAccount;
   } catch (error) {
     console.error('[syncPrimaryGmailAccount] Unexpected error:', error);
     return null;
