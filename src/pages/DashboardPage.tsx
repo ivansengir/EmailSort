@@ -3,16 +3,127 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { signOut, addGmailAccount } from '../lib/auth';
 import { supabase } from '../lib/supabase';
-import { fetchCategories, addCategory, fetchGmailAccounts, invokeEmailSync, deleteGmailAccount } from '../lib/data';
+import { fetchCategories, addCategory, fetchGmailAccounts, invokeEmailSync, deleteGmailAccount, updateCategory, reorderCategories } from '../lib/data';
 import type { Category, GmailAccount } from '../types';
-import { LogOut, Plus, Folder, RefreshCcw, Link, Trash2, FileText, Mail, Sparkles, TrendingUp } from 'lucide-react';
+import { LogOut, Plus, Folder, RefreshCcw, Link, Trash2, FileText, Mail, Sparkles, TrendingUp, Edit2, GripVertical } from 'lucide-react';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { EditCategoryModal } from '../components/EditCategoryModal';
+
+// Helper function to convert hex color to rgba with opacity
+function hexToRgba(hex: string, opacity: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
+interface SortableCategoryCardProps {
+  category: Category;
+  onEdit: (category: Category) => void;
+  onDelete: (id: string, name: string) => void;
+  onClick: (id: string) => void;
+}
+
+function SortableCategoryCard({ category, onEdit, onDelete, onClick }: SortableCategoryCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: category.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const bgColor = hexToRgba(category.color || '#3b82f6', 0.08);
+  const borderColor = hexToRgba(category.color || '#3b82f6', 0.2);
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ ...style, backgroundColor: bgColor, borderColor }}
+      className="group rounded-2xl p-6 shadow-lg hover:shadow-xl border-2 transition-all"
+    >
+      <div className="flex items-start gap-3">
+        {/* Drag Handle */}
+        <button
+          {...attributes}
+          {...listeners}
+          className="text-gray-400 hover:text-purple-600 p-1 cursor-grab active:cursor-grabbing"
+          title="Drag to reorder"
+        >
+          <GripVertical className="w-5 h-5" />
+        </button>
+
+        {/* Content */}
+        <div className="flex-1 cursor-pointer" onClick={() => onClick(category.id)}>
+          <h3 className="text-lg font-bold text-gray-900 group-hover:text-purple-600 transition-colors mb-2">
+            {category.name}
+          </h3>
+          <p className="text-sm text-gray-600 line-clamp-2 mb-3">
+            {category.description}
+          </p>
+          <div className="flex items-center gap-2">
+            <span 
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold"
+              style={{ 
+                backgroundColor: hexToRgba(category.color || '#3b82f6', 0.15),
+                color: category.color || '#3b82f6'
+              }}
+            >
+              <Mail className="w-3.5 h-3.5" />
+              {category.email_count || 0} emails
+            </span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(category);
+            }}
+            className="text-gray-400 hover:text-indigo-600 p-2 rounded-lg hover:bg-indigo-50 transition-colors"
+            title="Edit category"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(category.id, category.name);
+            }}
+            className="text-gray-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors"
+            title="Delete category"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+      
+      <div className="flex items-center gap-2 text-xs text-gray-500 pt-3 mt-3 border-t border-gray-200">
+        <span className="group-hover:text-purple-600 transition-colors">Click to view emails →</span>
+      </div>
+    </div>
+  );
+}
 
 export function DashboardPage() {
   const { user } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<GmailAccount[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [newCategory, setNewCategory] = useState({ name: '', description: '' });
+  const [showConnectAccountModal, setShowConnectAccountModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [newCategory, setNewCategory] = useState({ name: '', description: '', color: '#3b82f6' });
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<string | null>(null);
@@ -22,6 +133,24 @@ export function DashboardPage() {
   const [categoryPage, setCategoryPage] = useState(1);
   const categoriesPerPage = 10;
   const navigate = useNavigate();
+
+  const PRESET_COLORS = [
+    '#3b82f6', // blue
+    '#8b5cf6', // purple
+    '#ec4899', // pink
+    '#f59e0b', // amber
+    '#10b981', // green
+    '#06b6d4', // cyan
+    '#ef4444', // red
+    '#f97316', // orange
+  ];
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -56,9 +185,10 @@ export function DashboardPage() {
         userId: user.id,
         name: newCategory.name,
         description: newCategory.description,
+        color: newCategory.color,
       });
       setFeedback('Category created successfully');
-      setNewCategory({ name: '', description: '' });
+      setNewCategory({ name: '', description: '', color: '#3b82f6' });
       setShowModal(false);
       await loadData();
     } catch (error) {
@@ -112,34 +242,18 @@ export function DashboardPage() {
     }
   }
 
-  async function handleConnectAnotherAccount() {
-    const message = `🔐 Adding Multiple Gmail Accounts
+  function handleConnectAnotherAccount() {
+    setShowConnectAccountModal(true);
+  }
 
-EmailSort supports multiple Gmail accounts! Here's how:
-
-METHOD 1: Using Google Account Switcher
-1. Click "Connect Account" again
-2. Google will show account selector
-3. Choose a different Gmail account
-4. Grant permissions
-
-METHOD 2: Browser Profile (Recommended)
-1. Open EmailSort in a new browser profile
-2. Sign in with different Google account
-3. Each profile manages different Gmail accounts independently
-
-NOTE: Due to Google OAuth limitations, each Gmail needs its own authorization flow.
-
-Ready to add another account?`;
-
-    if (confirm(message)) {
-      try {
-        setFeedback('Redirecting to Google... Select a different account when prompted.');
-        await addGmailAccount();
-      } catch (error) {
-        console.error('Failed to add Gmail account:', error);
-        setFeedback('Failed to connect Gmail account. Please try again.');
-      }
+  async function confirmAddAccount() {
+    setShowConnectAccountModal(false);
+    try {
+      setFeedback('Redirecting to Google... Select a different account when prompted.');
+      await addGmailAccount();
+    } catch (error) {
+      console.error('Failed to add Gmail account:', error);
+      setFeedback('Failed to connect Gmail account. Please try again.');
     }
   }
 
@@ -217,6 +331,42 @@ Ready to add another account?`;
 
   function handleCategoryClick(categoryId: string) {
     navigate(`/categories/${categoryId}`);
+  }
+
+  async function handleEditCategory(category: Category) {
+    setEditingCategory(category);
+  }
+
+  async function handleSaveCategory(categoryId: string, updates: { name: string; description: string; color: string }) {
+    try {
+      await updateCategory(categoryId, updates);
+      setFeedback('✓ Category updated successfully');
+      await loadData();
+    } catch (error) {
+      console.error('Failed to update category:', error);
+      setFeedback('❌ Failed to update category');
+    }
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setCategories((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+
+        const newOrder = arrayMove(items, oldIndex, newIndex);
+        
+        // Save new order to backend
+        reorderCategories(newOrder.map(cat => cat.id)).catch((error) => {
+          console.error('Failed to save category order:', error);
+          setFeedback('❌ Failed to save category order');
+        });
+
+        return newOrder;
+      });
+    }
   }
 
   return (
@@ -429,47 +579,30 @@ Ready to add another account?`;
             </div>
           ) : (
             <>
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {categories
-                  .slice((categoryPage - 1) * categoriesPerPage, categoryPage * categoriesPerPage)
-                  .map((category) => (
-                  <div
-                    key={category.id}
-                    onClick={() => handleCategoryClick(category.id)}
-                    className="group bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 shadow-lg hover:shadow-xl border border-gray-200 hover:border-purple-300 cursor-pointer transition-all hover:scale-105"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <h3 className="text-lg font-bold text-gray-900 group-hover:text-purple-600 transition-colors mb-2">
-                          {category.name}
-                        </h3>
-                        <p className="text-sm text-gray-600 line-clamp-2 mb-3">
-                          {category.description}
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-700 rounded-lg text-xs font-semibold">
-                            <Mail className="w-3.5 h-3.5" />
-                            {category.email_count || 0} emails
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteCategory(category.id, category.name);
-                        }}
-                        className="text-gray-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                        title="Delete category"
-                      >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={categories.slice((categoryPage - 1) * categoriesPerPage, categoryPage * categoriesPerPage).map(c => c.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    {categories
+                      .slice((categoryPage - 1) * categoriesPerPage, categoryPage * categoriesPerPage)
+                      .map((category) => (
+                        <SortableCategoryCard
+                          key={category.id}
+                          category={category}
+                          onEdit={handleEditCategory}
+                          onDelete={handleDeleteCategory}
+                          onClick={handleCategoryClick}
+                        />
+                    ))}
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-500 pt-3 border-t border-gray-200">
-                    <span className="group-hover:text-purple-600 transition-colors">Click to view emails →</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                </SortableContext>
+              </DndContext>
             
             {/* Pagination Controls */}
             {categories.length > categoriesPerPage && (
@@ -527,7 +660,7 @@ Ready to add another account?`;
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  AI Description
+                  Description
                 </label>
                 <textarea
                   placeholder="Describe what emails should go here. Be specific for better AI categorization..."
@@ -535,6 +668,28 @@ Ready to add another account?`;
                   onChange={(e) => setNewCategory({ ...newCategory, description: e.target.value })}
                   className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl h-32 resize-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  Color
+                </label>
+                <div className="grid grid-cols-8 gap-2">
+                  {PRESET_COLORS.map((presetColor) => (
+                    <button
+                      key={presetColor}
+                      type="button"
+                      onClick={() => setNewCategory({ ...newCategory, color: presetColor })}
+                      className={`w-10 h-10 rounded-lg transition-all ${
+                        newCategory.color === presetColor
+                          ? 'ring-4 ring-offset-2 ring-indigo-400 scale-110'
+                          : 'hover:scale-110'
+                      }`}
+                      style={{ backgroundColor: presetColor }}
+                      aria-label={`Select color ${presetColor}`}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
             
@@ -631,6 +786,48 @@ Ready to add another account?`;
         </div>
       )}
 
+      {showConnectAccountModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
+                <Mail className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Add Gmail Account</h3>
+                <p className="text-sm text-gray-600">Connect another account</p>
+              </div>
+            </div>
+            
+            <div className="text-gray-700 mb-6 space-y-3">
+              <p>
+                EmailSort supports multiple Gmail accounts. Click "Connect Account" to add another one.
+              </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>💡 Tip:</strong> Google will show an account selector where you can choose a different Gmail account and grant permissions.
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowConnectAccountModal(false)}
+                className="flex-1 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmAddAccount}
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-medium transition-all shadow-lg shadow-blue-500/30"
+              >
+                Connect Account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sync Progress Overlay - Blocks interaction during sync */}
       {isSyncing && syncProgress && (
         <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50">
@@ -665,6 +862,15 @@ Ready to add another account?`;
             </div>
           </div>
         </div>
+      )}
+
+      {/* Edit Category Modal */}
+      {editingCategory && (
+        <EditCategoryModal
+          category={editingCategory}
+          onClose={() => setEditingCategory(null)}
+          onSave={handleSaveCategory}
+        />
       )}
     </div>
   );

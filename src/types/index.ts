@@ -27,6 +27,7 @@ export interface Category {
   description: string;
   color: string;
   email_count: number;
+  order_index: number;
   created_at: string;
   updated_at: string;
 }

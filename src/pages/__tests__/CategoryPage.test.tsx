@@ -29,7 +29,7 @@ vi.mock('../../lib/data', () => ({
 describe('CategoryPage', () => {
   beforeEach(() => {
     mockFetchCategories.mockResolvedValue([
-      { id: 'cat-1', user_id: 'user-1', name: 'Newsletters', description: 'Marketing emails', color: '#3b82f6', email_count: 2, created_at: '', updated_at: '' },
+      { id: 'cat-1', user_id: 'user-1', name: 'Newsletters', description: 'Marketing emails', color: '#3b82f6', email_count: 2, order_index: 0, created_at: '', updated_at: '' },
     ]);
     mockFetchEmailsByCategory.mockResolvedValue([
       {

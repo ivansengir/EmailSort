@@ -43,7 +43,7 @@ describe('DashboardPage', () => {
   }
 
   beforeEach(() => {
-    mockFetchCategories.mockResolvedValue([{ id: 'cat-1', user_id: 'user-1', name: 'Newsletters', description: 'Marketing emails', color: '#3b82f6', email_count: 3, created_at: '', updated_at: '' }]);
+    mockFetchCategories.mockResolvedValue([{ id: 'cat-1', user_id: 'user-1', name: 'Newsletters', description: 'Marketing emails', color: '#3b82f6', email_count: 3, order_index: 0, created_at: '', updated_at: '' }]);
     mockFetchGmailAccounts.mockResolvedValue([
       {
         id: 'acc-1',
@@ -70,18 +70,16 @@ describe('DashboardPage', () => {
   it('renders linked inboxes and categories', async () => {
     renderWithinRouter();
 
-  await screen.findByText('Connected Gmail Accounts');
-  expect(screen.getAllByText('owner@example.com')).toHaveLength(2);
+    await screen.findByText('Gmail Accounts');
+    expect(screen.getAllByText('owner@example.com')).toHaveLength(2);
     expect(screen.getByText('Newsletters')).toBeInTheDocument();
   });
 
   it('triggers category creation workflow', async () => {
     renderWithinRouter();
 
-    await screen.findByText('Add Category');
-    fireEvent.click(screen.getByText('Add Category'));
-
-    const nameInput = await screen.findByPlaceholderText('Category name (e.g., Newsletters)');
+    await screen.findByText('New Category');
+    fireEvent.click(screen.getByText('New Category'));    const nameInput = await screen.findByPlaceholderText('Category name (e.g., Newsletters)');
     fireEvent.change(nameInput, { target: { value: 'Finance' } });
     fireEvent.change(screen.getByPlaceholderText('Description for AI categorization...'), { target: { value: 'Bank statements' } });
     fireEvent.click(screen.getByText('Create'));
