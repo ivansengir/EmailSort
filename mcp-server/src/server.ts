@@ -47,7 +47,8 @@ async function autoUnsubscribe(url: string): Promise<{
       timeout: 60000 // 60 seconds for slow pages like MediaMarkt
     });
     
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait for any redirects or dynamic navigation to complete
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
     const successKeywords = [
       'successfully unsubscribed',
@@ -61,7 +62,23 @@ async function autoUnsubscribe(url: string): Promise<{
       'te has dado de baja'
     ];
     
-    const pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
+    let pageText: string;
+    try {
+      pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
+    } catch (_evalError) {
+      console.log('[Server] ⚠ Page navigated during evaluation, waiting and retrying...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      try {
+        pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
+      } catch (_retryError) {
+        console.error('[Server] ❌ Failed to evaluate page after navigation');
+        return {
+          success: false,
+          method: 'unknown',
+          message: 'Page redirected during evaluation, could not analyze content'
+        };
+      }
+    }
     
     for (const keyword of successKeywords) {
       if (pageText.includes(keyword.toLowerCase())) {
