@@ -42,7 +42,7 @@ Your task:
 2. If not, identify what needs to be clicked/selected to unsubscribe
 3. Provide a CSS selector for the element to interact with
 
-Response format:
+You must respond with a JSON object in this exact format:
 {
   "action": "success" | "click_button" | "select_option" | "fill_form" | "captcha" | "login" | "unknown",
   "selector": "CSS selector of element to interact with (if applicable)",
@@ -52,7 +52,7 @@ Response format:
         },
         {
           role: "user",
-          content: `Analyze this unsubscribe page:
+          content: `Analyze this unsubscribe page and respond with a JSON object:
 
 PAGE TEXT:
 ${pageText.substring(0, 2000)}
@@ -60,7 +60,7 @@ ${pageText.substring(0, 2000)}
 HTML STRUCTURE:
 ${htmlContext}
 
-What action should be taken?`
+What action should be taken? Respond in JSON format.`
         }
       ],
       response_format: { type: "json_object" },
@@ -99,11 +99,11 @@ async function checkSuccessWithAI(pageText: string): Promise<{
       messages: [
         {
           role: "system",
-          content: "You are analyzing a webpage to determine if an email unsubscribe action was successful. Look for confirmation messages, success indicators, or error messages."
+          content: "You are analyzing a webpage to determine if an email unsubscribe action was successful. Look for confirmation messages, success indicators, or error messages. Respond with a JSON object."
         },
         {
           role: "user",
-          content: `Analyze this webpage content and determine if the unsubscribe was successful:\n\n${pageText.substring(0, 3000)}\n\nRespond with JSON: { "success": true/false, "reason": "explanation" }`
+          content: `Analyze this webpage content and determine if the unsubscribe was successful:\n\n${pageText.substring(0, 3000)}\n\nRespond with a JSON object: { "success": true/false, "reason": "explanation" }`
         }
       ],
       response_format: { type: "json_object" },
