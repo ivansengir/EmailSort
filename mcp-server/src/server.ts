@@ -1,12 +1,129 @@
 #!/usr/bin/env node
 
+import 'dotenv/config';
 import express from 'express';
 import puppeteer, { Browser } from "puppeteer";
+import OpenAI from "openai";
 
 const app = express();
 app.use(express.json());
 
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
 let browser: Browser | null = null;
+
+/**
+ * Use OpenAI to analyze the page and decide what action to take
+ */
+async function analyzePageWithAI(pageHtml: string, pageText: string): Promise<{
+  action: 'success' | 'click_button' | 'select_option' | 'fill_form' | 'captcha' | 'login' | 'unknown';
+  selector?: string;
+  value?: string;
+  message: string;
+}> {
+  try {
+    // Extract relevant HTML structure (buttons, forms, inputs)
+    const htmlContext = pageHtml
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove scripts
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '') // Remove styles
+      .substring(0, 8000); // Limit size
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are an AI that analyzes unsubscribe pages and determines what action to take.
+
+Your task:
+1. Determine if the page already shows success (user is unsubscribed)
+2. If not, identify what needs to be clicked/selected to unsubscribe
+3. Provide a CSS selector for the element to interact with
+
+Response format:
+{
+  "action": "success" | "click_button" | "select_option" | "fill_form" | "captcha" | "login" | "unknown",
+  "selector": "CSS selector of element to interact with (if applicable)",
+  "value": "value to select/enter (if applicable)",
+  "message": "explanation of what was found"
+}`
+        },
+        {
+          role: "user",
+          content: `Analyze this unsubscribe page:
+
+PAGE TEXT:
+${pageText.substring(0, 2000)}
+
+HTML STRUCTURE:
+${htmlContext}
+
+What action should be taken?`
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.1
+    });
+
+    const result = JSON.parse(completion.choices[0].message.content || '{"action": "unknown", "message": "No response"}');
+    
+    console.log('[Server] AI Decision:', result);
+    
+    return {
+      action: result.action || 'unknown',
+      selector: result.selector,
+      value: result.value,
+      message: result.message || "Unknown"
+    };
+  } catch (error) {
+    console.error('[Server] AI analysis error:', error);
+    return {
+      action: 'unknown',
+      message: 'AI analysis failed'
+    };
+  }
+}
+
+/**
+ * Quick check if page shows success (for after form submission)
+ */
+async function checkSuccessWithAI(pageText: string): Promise<{
+  isSuccess: boolean;
+  message: string;
+}> {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You are analyzing a webpage to determine if an email unsubscribe action was successful. Look for confirmation messages, success indicators, or error messages."
+        },
+        {
+          role: "user",
+          content: `Analyze this webpage content and determine if the unsubscribe was successful:\n\n${pageText.substring(0, 3000)}\n\nRespond with JSON: { "success": true/false, "reason": "explanation" }`
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.1
+    });
+
+    const result = JSON.parse(completion.choices[0].message.content || '{"success": false, "reason": "No response"}');
+    
+    return {
+      isSuccess: result.success === true,
+      message: result.reason || "Unknown"
+    };
+  } catch (error) {
+    console.error('[Server] AI success check error:', error);
+    return {
+      isSuccess: false,
+      message: 'AI analysis failed'
+    };
+  }
+}
 
 async function getBrowser(): Promise<Browser> {
   if (!browser) {
@@ -32,7 +149,7 @@ async function autoUnsubscribe(url: string): Promise<{
   method: string;
   message: string;
 }> {
-  console.log(`[Server] Starting auto-unsubscribe for: ${url}`);
+  console.log(`[Server] Starting AI-guided auto-unsubscribe for: ${url}`);
   
   const browser = await getBrowser();
   const page = await browser.newPage();
@@ -43,173 +160,154 @@ async function autoUnsubscribe(url: string): Promise<{
     
     console.log(`[Server] Navigating to: ${url}`);
     await page.goto(url, { 
-      waitUntil: 'domcontentloaded', // Faster than networkidle2, good enough for forms
-      timeout: 60000 // 60 seconds for slow pages like MediaMarkt
+      waitUntil: 'domcontentloaded',
+      timeout: 60000
     });
     
-    // Wait for any redirects or dynamic navigation to complete
+    // Wait for page to stabilize
     await new Promise(resolve => setTimeout(resolve, 3000));
     
-    const successKeywords = [
-      'successfully unsubscribed',
-      'you have been removed',
-      'confirmado',
-      'éxito',
-      'successfully removed',
-      'no longer receive',
-      'unsubscription confirmed',
-      'has sido dado de baja',
-      'te has dado de baja'
-    ];
-    
+    // Get page content for AI analysis
+    let pageHtml: string;
     let pageText: string;
+    
     try {
-      pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
-    } catch (_evalError) {
-      console.log('[Server] ⚠ Page navigated during evaluation, waiting and retrying...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      try {
-        pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
-      } catch (_retryError) {
-        console.error('[Server] ❌ Failed to evaluate page after navigation');
-        return {
-          success: false,
-          method: 'unknown',
-          message: 'Page redirected during evaluation, could not analyze content'
-        };
-      }
+      pageHtml = await page.content();
+      pageText = await page.evaluate(() => document.body.innerText);
+    } catch {
+      console.error('[Server] ❌ Failed to get page content');
+      return {
+        success: false,
+        method: 'unknown',
+        message: 'Failed to analyze page content'
+      };
     }
     
-    for (const keyword of successKeywords) {
-      if (pageText.includes(keyword.toLowerCase())) {
-        console.log(`[Server] ✓ Success message detected: "${keyword}"`);
+    console.log('[Server] 🤖 Asking AI to analyze the page...');
+    const aiDecision = await analyzePageWithAI(pageHtml, pageText);
+    
+    console.log(`[Server] AI Decision: ${aiDecision.action} - ${aiDecision.message}`);
+    
+    // Handle AI decision
+    switch (aiDecision.action) {
+      case 'success':
+        console.log('[Server] ✅ Page already shows success!');
         return {
           success: true,
           method: 'direct-link',
-          message: 'Unsubscribe link worked directly, no form needed'
+          message: aiDecision.message
         };
-      }
-    }
-    
-    console.log('[Server] Analyzing page for interactive elements...');
-    
-    const analysis = await page.evaluate(() => {
-      const forms = document.querySelectorAll('form');
-      const radioButtons = document.querySelectorAll('input[type="radio"]');
-      const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-      const submitButtons = document.querySelectorAll('button[type="submit"], input[type="submit"], button:not([type])');
       
-      return {
-        hasForm: forms.length > 0,
-        radioCount: radioButtons.length,
-        checkboxCount: checkboxes.length,
-        submitCount: submitButtons.length
-      };
-    });
-    
-    console.log('[Server] Page analysis:', JSON.stringify(analysis, null, 2));
-    
-    // Handle radio button forms (MediaMarkt)
-    if (analysis.radioCount > 0) {
-      console.log(`[Server] Found ${analysis.radioCount} radio buttons, selecting first option...`);
-      
-      await page.evaluate(() => {
-        const radios = document.querySelectorAll('input[type="radio"]');
-        if (radios.length > 0) {
-          (radios[0] as HTMLInputElement).click();
+      case 'click_button':
+      case 'select_option':
+        if (!aiDecision.selector) {
+          return {
+            success: false,
+            method: 'ai-auto',
+            message: 'AI found action but no selector provided'
+          };
         }
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const submitClicked = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('button[type="submit"], input[type="submit"], button'));
-        const submitButton = buttons.find(btn => {
-          const text = btn.textContent?.toLowerCase() || '';
-          const value = (btn as HTMLInputElement).value?.toLowerCase() || '';
-          return text.includes('submit') || text.includes('enviar') || text.includes('confirmar') || 
-                 value.includes('submit') || value.includes('enviar');
-        });
         
-        if (submitButton) {
-          (submitButton as HTMLElement).click();
-          return true;
-        }
-        return false;
-      });
-      
-      if (submitClicked) {
-        console.log('[Server] Submit button clicked, waiting for response...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        console.log(`[Server] 🖱️ AI says: ${aiDecision.action} on selector: ${aiDecision.selector}`);
         
-        const finalText = await page.evaluate(() => document.body.innerText.toLowerCase());
-        
-        for (const keyword of successKeywords) {
-          if (finalText.includes(keyword.toLowerCase())) {
-            console.log(`[Server] ✓ Success confirmed after form submission`);
+        try {
+          // Wait for element and click it
+          await page.waitForSelector(aiDecision.selector, { timeout: 5000 });
+          
+          if (aiDecision.action === 'select_option' && aiDecision.value) {
+            // Select a specific option (radio button, checkbox, dropdown)
+            await page.evaluate((selector, value) => {
+              const element = document.querySelector(selector) as HTMLInputElement | HTMLSelectElement;
+              if (element) {
+                if (element.tagName === 'SELECT') {
+                  element.value = value;
+                } else if (element.type === 'radio' || element.type === 'checkbox') {
+                  element.checked = true;
+                }
+                element.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            }, aiDecision.selector, aiDecision.value);
+          } else {
+            // Simple click
+            await page.click(aiDecision.selector);
+          }
+          
+          console.log('[Server] ✓ Element clicked, waiting for response...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Check if there's a submit button to click
+          const hasSubmit = await page.evaluate(() => {
+            const buttons = document.querySelectorAll('button[type="submit"], input[type="submit"]');
+            return buttons.length > 0;
+          });
+          
+          if (hasSubmit) {
+            console.log('[Server] 📝 Found submit button, clicking...');
+            await page.click('button[type="submit"], input[type="submit"]');
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+          
+          // Get result and check with AI
+          let resultText: string;
+          try {
+            resultText = await page.evaluate(() => document.body.innerText);
+          } catch {
             return {
               success: true,
               method: 'ai-auto',
-              message: 'Selected radio button and submitted form successfully'
+              message: 'Action completed (page redirected)'
             };
           }
+          
+          const successCheck = await checkSuccessWithAI(resultText);
+          
+          return {
+            success: successCheck.isSuccess,
+            method: 'ai-auto',
+            message: successCheck.message
+          };
+          
+        } catch (error) {
+          console.error('[Server] ❌ Failed to interact with element:', error);
+          return {
+            success: false,
+            method: 'ai-auto',
+            message: `Could not find or click element: ${aiDecision.selector}`
+          };
         }
-        
-        return {
-          success: true,
-          method: 'ai-auto',
-          message: 'Form submitted (selected first option and clicked submit)'
-        };
-      }
-    }
-    
-    // Handle simple forms
-    if (analysis.hasForm && analysis.submitCount > 0) {
-      console.log('[Server] Found simple form, clicking submit...');
       
-      const clicked = await page.evaluate(() => {
-        const buttons = document.querySelectorAll('button[type="submit"], input[type="submit"]');
-        if (buttons.length > 0) {
-          (buttons[0] as HTMLElement).click();
-          return true;
-        }
-        return false;
-      });
-      
-      if (clicked) {
-        await new Promise(resolve => setTimeout(resolve, 3000));
+      case 'fill_form':
+        console.log('[Server] 📝 AI detected form that needs filling');
         return {
-          success: true,
-          method: 'form-auto',
-          message: 'Submitted form by clicking submit button'
+          success: false,
+          method: 'manual',
+          message: 'Form requires data input - manual intervention needed'
         };
-      }
+      
+      case 'captcha':
+        console.log('[Server] ⚠️ AI detected CAPTCHA');
+        return {
+          success: false,
+          method: 'manual',
+          message: aiDecision.message || 'CAPTCHA detected - manual intervention needed'
+        };
+      
+      case 'login':
+        console.log('[Server] ⚠️ AI detected login requirement');
+        return {
+          success: false,
+          method: 'manual',
+          message: aiDecision.message || 'Login required - manual intervention needed'
+        };
+      
+      default:
+        console.log('[Server] ❓ AI could not determine action');
+        return {
+          success: false,
+          method: 'unknown',
+          message: aiDecision.message || 'Could not determine how to unsubscribe'
+        };
     }
-    
-    if (pageText.includes('captcha') || pageText.includes('recaptcha')) {
-      console.log('[Server] ⚠ CAPTCHA detected');
-      return {
-        success: false,
-        method: 'manual',
-        message: 'Page requires CAPTCHA verification - manual intervention needed'
-      };
-    }
-    
-    if (pageText.includes('log in') || pageText.includes('sign in') || pageText.includes('password')) {
-      console.log('[Server] ⚠ Login required');
-      return {
-        success: false,
-        method: 'manual',
-        message: 'Page requires authentication - manual intervention needed'
-      };
-    }
-    
-    console.log('[Server] ⚠ Could not determine action');
-    return {
-      success: false,
-      method: 'unknown',
-      message: 'Could not automatically determine how to unsubscribe from this page'
-    };
     
   } catch (error) {
     console.error('[Server] Error during automation:', error);

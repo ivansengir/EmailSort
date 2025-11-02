@@ -10,4 +10,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: OPENAI_API_KEY
+        sync: false  # This means you'll set it manually in Render dashboard
     healthCheckPath: /health
