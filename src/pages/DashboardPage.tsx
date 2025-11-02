@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { signOut } from '../lib/auth';
+import { signOut, addGmailAccount } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { fetchCategories, addCategory, fetchGmailAccounts, invokeEmailSync, deleteGmailAccount } from '../lib/data';
 import type { Category, GmailAccount } from '../types';
@@ -113,22 +113,32 @@ export function DashboardPage() {
   }
 
   async function handleConnectAnotherAccount() {
-    const message = `Currently, you can only manage one Gmail account per Google login.
+    const message = `🔐 Adding Multiple Gmail Accounts
 
-To add a different Gmail account:
-1. Sign out (top right)
-2. Sign in with the other Google account
+EmailSort supports multiple Gmail accounts! Here's how:
 
-Note: Each Google account has its own separate EmailSort workspace.
+METHOD 1: Using Google Account Switcher
+1. Click "Connect Account" again
+2. Google will show account selector
+3. Choose a different Gmail account
+4. Grant permissions
 
-Do you want to sign out now and switch accounts?`;
+METHOD 2: Browser Profile (Recommended)
+1. Open EmailSort in a new browser profile
+2. Sign in with different Google account
+3. Each profile manages different Gmail accounts independently
+
+NOTE: Due to Google OAuth limitations, each Gmail needs its own authorization flow.
+
+Ready to add another account?`;
 
     if (confirm(message)) {
       try {
-        await signOut();
+        setFeedback('Redirecting to Google... Select a different account when prompted.');
+        await addGmailAccount();
       } catch (error) {
-        console.error('Failed to sign out:', error);
-        setFeedback('Failed to sign out. Please try again.');
+        console.error('Failed to add Gmail account:', error);
+        setFeedback('Failed to connect Gmail account. Please try again.');
       }
     }
   }

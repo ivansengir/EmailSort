@@ -75,6 +75,29 @@ export async function signInWithGoogle() {
   return data;
 }
 
+/**
+ * Add another Gmail account to the current user
+ * This will trigger OAuth flow allowing user to select a different account
+ */
+export async function addGmailAccount() {
+  const redirectUrl = window.location.origin;
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: redirectUrl,
+      scopes: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify',
+      queryParams: {
+        access_type: 'offline',
+        prompt: 'select_account', // Force account selection
+      },
+    },
+  });
+
+  if (error) throw error;
+  return data;
+}
+
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   // Clear cache on sign out
