@@ -32,13 +32,18 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-RUN npm install --production
+
+# Install ALL dependencies (including TypeScript for build)
+RUN npm install
 
 # Copy source
 COPY . .
 
 # Build TypeScript
 RUN npm run build
+
+# Remove dev dependencies after build
+RUN npm prune --production
 
 EXPOSE 3001
 

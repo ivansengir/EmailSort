@@ -2,14 +2,12 @@
 services:
   - type: web
     name: emailsort-mcp-server
-    runtime: node
+    runtime: docker
     region: oregon
     plan: free
-    buildCommand: cd mcp-server && npm install && npm run build
-    startCommand: cd mcp-server && npm start
+    rootDir: mcp-server
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3001
     healthCheckPath: /health
