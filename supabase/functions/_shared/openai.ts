@@ -23,12 +23,12 @@ interface CategorizationPromptInput {
 
 export async function categorizeEmail(input: CategorizationPromptInput) {
   const completion = await getClient().chat.completions.create({
-    model: "gpt-4.1-nano",
+    model: "gpt-4o", // Fastest GPT-4 model, better than 4o-mini and 3.5-turbo
     messages: [
       {
         role: "system",
         content:
-          "You are an email triage assistant. You must choose the best category for the email based strictly on the provided options. Return JSON only with keys categoryId, categoryName, confidence.",
+          "You are an expert email categorization assistant. Analyze the email and choose the BEST matching category. If the email doesn't clearly fit any specific category, choose 'Others'. Be strict: only categorize an email under a specific category if it truly belongs there. Return JSON with keys categoryId, categoryName, confidence (0-100).",
       },
       {
         role: "user",
@@ -36,7 +36,7 @@ export async function categorizeEmail(input: CategorizationPromptInput) {
       },
     ],
     response_format: {
-      type: "json_schema",
+      type: "json_schema", // gpt-4o supports json_schema for better structure
       json_schema: {
         name: "EmailClassification",
         schema: {
@@ -67,7 +67,7 @@ export async function categorizeEmail(input: CategorizationPromptInput) {
 
 export async function summarizeEmail(subject: string, body: string) {
   const completion = await getClient().chat.completions.create({
-    model: "gpt-4.1-nano",
+    model: "gpt-4o", // Also use gpt-4o for better quality summaries
     messages: [
       {
         role: "system",

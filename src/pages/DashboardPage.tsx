@@ -15,7 +15,12 @@ export function DashboardPage() {
   const [newCategory, setNewCategory] = useState({ name: '', description: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ categoryId: string; categoryName: string } | null>(null);
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState<{ accountId: string; email: string } | null>(null);
+  const [categoryPage, setCategoryPage] = useState(1);
+  const categoriesPerPage = 10;
   const navigate = useNavigate();
 
   const loadData = useCallback(async () => {
@@ -62,22 +67,39 @@ export function DashboardPage() {
     }
   }
 
-  async function handleSync(accountId?: string) {
+  async function handleSync(accountId?: string, syncMode?: 'last30' | 'all') {
     try {
       if (categories.length === 0) {
         setFeedback('⚠️ Please create at least one category before syncing emails');
         return;
       }
+      
+      // Show confirmation for 'all' mode
+      if (syncMode === 'all') {
+        const confirmed = confirm(
+          '⚠️ Sync All will process up to 500 emails. This may take several minutes and could hit OpenAI rate limits.\n\n' +
+          'If rate limits are reached, wait 1 minute and click Sync All again to continue.\n\n' +
+          'Continue?'
+        );
+        if (!confirmed) return;
+      }
+      
       setIsSyncing(true);
-      setFeedback('Syncing emails...');
-      const result = await invokeEmailSync(accountId);
+      const modeText = syncMode === 'all' ? 'all emails (up to 500)' : syncMode === 'last30' ? 'last 30 emails' : 'new emails';
+      setSyncProgress(`Syncing ${modeText}... Please wait, do not close this page.`);
+      setFeedback(null); // Clear previous feedback
+      
+      const result = await invokeEmailSync(accountId, true, syncMode);
       
       if (result?.needsCategories) {
         setFeedback('⚠️ Please create at least one category before syncing emails');
+      } else if (result?.rateLimitHit) {
+        setFeedback('⚠️ OpenAI rate limit reached! Some emails were not processed. Wait 1 minute and try syncing again.');
       } else if (result?.syncedEmails?.length === 0) {
         setFeedback('✓ Sync completed - No new emails found');
       } else {
-        setFeedback(`✓ Sync completed - ${result?.syncedEmails?.length || 0} emails imported`);
+        const imported = result?.syncedEmails?.filter((e: { error?: string }) => !e.error).length || 0;
+        setFeedback(`✓ Sync completed - ${imported} emails imported`);
       }
       await loadData();
     } catch (error) {
@@ -86,64 +108,7 @@ export function DashboardPage() {
       setFeedback(`❌ ${errorMessage}`);
     } finally {
       setIsSyncing(false);
-    }
-  }
-
-  async function handleTestGmail() {
-    try {
-      setFeedback('🔍 Testing Gmail API connection...');
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('No session');
-      
-      const { data, error } = await supabase.functions.invoke('test-gmail', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      
-      if (error) throw error;
-      
-      console.log('Gmail API Test Results:', data);
-      
-      if (data.success) {
-        const totalMessages = Object.values(data.queries as Record<string, { messageCount?: number }>).reduce(
-          (sum: number, q) => sum + (q.messageCount || 0), 
-          0
-        );
-        setFeedback(`✓ Gmail API working! Found ${totalMessages} total messages. Check console for details.`);
-      } else {
-        setFeedback('❌ Gmail API test failed. Check console for details.');
-      }
-    } catch (error) {
-      console.error('Gmail test failed:', error);
-      setFeedback(`❌ Test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async function handleTestBulkActions() {
-    if (!confirm('⚠️ This will archive and delete one email from your inbox for testing. Continue?')) {
-      return;
-    }
-    
-    try {
-      setFeedback('🧪 Testing bulk actions (delete/archive)...');
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('No session');
-      
-      const { data, error } = await supabase.functions.invoke('test-bulk', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      
-      if (error) throw error;
-      
-      console.log('Bulk Actions Test Results:', data);
-      
-      if (data.status === 'success') {
-        setFeedback(`✓ Bulk actions test passed! Email "${data.email.subject}" was archived and deleted. Check console for details.`);
-      } else {
-        setFeedback(`❌ Bulk actions test failed at: ${data.test}. Error: ${data.error}`);
-      }
-    } catch (error) {
-      console.error('Bulk actions test failed:', error);
-      setFeedback(`❌ Test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setSyncProgress(null);
     }
   }
 
@@ -169,30 +134,65 @@ Do you want to sign out now and switch accounts?`;
   }
 
   async function handleDeleteAccount(accountId: string, email: string) {
-    if (!confirm(`Are you sure you want to remove the account "${email}"? This will also delete all emails from this account.`)) {
-      return;
-    }
+    setConfirmDeleteAccount({ accountId, email });
+  }
+
+  async function executeDeleteAccount() {
+    if (!confirmDeleteAccount) return;
+    
+    const { accountId, email } = confirmDeleteAccount;
 
     try {
+      setFeedback(`Removing account "${email}"...`);
+      setConfirmDeleteAccount(null); // Close modal
+      
       await deleteGmailAccount(accountId);
       setFeedback(`✓ Account "${email}" removed successfully`);
       await loadData();
     } catch (error) {
       console.error('Failed to delete account:', error);
-      setFeedback(`❌ Failed to remove account "${email}"`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setFeedback(`❌ Failed to remove account "${email}": ${errorMessage}`);
     }
   }
 
   async function handleDeleteCategory(categoryId: string, categoryName: string) {
-    if (!confirm(`Are you sure you want to delete the category "${categoryName}"?`)) {
-      return;
-    }
+    // Show confirmation modal instead of browser alert
+    setConfirmDelete({ categoryId, categoryName });
+  }
+
+  async function confirmDeleteCategory() {
+    if (!confirmDelete) return;
+    
+    const { categoryId, categoryName } = confirmDelete;
 
     try {
+      setFeedback(`Deleting category "${categoryName}"...`);
+      setConfirmDelete(null); // Close modal
+      
+      // First, verify we have a valid session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session. Please log in again.');
+      }
+
+      // Get the current user's ID from the users table
+      const { data: currentUser, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('auth_id', session.user.id)
+        .single();
+
+      if (userError || !currentUser) {
+        throw new Error('User profile not found');
+      }
+
+      // Delete the category (emails will be cascade deleted)
       const { error } = await supabase
         .from('categories')
         .delete()
-        .eq('id', categoryId);
+        .eq('id', categoryId)
+        .eq('user_id', currentUser.id); // Ensure user owns this category
 
       if (error) throw error;
       
@@ -200,7 +200,8 @@ Do you want to sign out now and switch accounts?`;
       await loadData();
     } catch (error) {
       console.error('Failed to delete category:', error);
-      setFeedback(`❌ Failed to delete category "${categoryName}"`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setFeedback(`❌ Failed to delete category "${categoryName}": ${errorMessage}`);
     }
   }
 
@@ -231,7 +232,7 @@ Do you want to sign out now and switch accounts?`;
                 title="View unsubscribe logs"
               >
                 <FileText className="w-4 h-4" />
-                <span className="hidden sm:inline">Logs</span>
+                <span className="hidden sm:inline">Unsubscribe Logs</span>
               </button>
               <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
                 <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">
@@ -357,26 +358,31 @@ Do you want to sign out now and switch accounts?`;
                   <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
                     <span>Last sync: {account.last_sync_at ? new Date(account.last_sync_at).toLocaleString() : 'Never'}</span>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleTestGmail}
-                      className="flex-1 text-xs text-purple-600 hover:bg-purple-50 py-2 px-3 rounded-lg border border-purple-200 transition-colors"
-                    >
-                      🔍 Test API
-                    </button>
-                    <button
-                      onClick={handleTestBulkActions}
-                      className="flex-1 text-xs text-orange-600 hover:bg-orange-50 py-2 px-3 rounded-lg border border-orange-200 transition-colors"
-                    >
-                      🧪 Test Bulk
-                    </button>
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       onClick={() => handleSync(account.id)}
                       disabled={isSyncing}
-                      className="flex-1 text-xs bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white py-2 px-3 rounded-lg font-medium transition-all flex items-center justify-center gap-1"
+                      className="text-xs bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white py-2 px-2 rounded-lg font-medium transition-all flex items-center justify-center gap-1"
+                      title="Sync new emails only"
                     >
                       <RefreshCcw className="w-3 h-3" />
-                      Sync
+                      Sync New
+                    </button>
+                    <button
+                      onClick={() => handleSync(account.id, 'last30')}
+                      disabled={isSyncing}
+                      className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white py-2 px-2 rounded-lg font-medium transition-all"
+                      title="Sync last 30 emails"
+                    >
+                      Last 30
+                    </button>
+                    <button
+                      onClick={() => handleSync(account.id, 'all')}
+                      disabled={isSyncing}
+                      className="text-xs bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white py-2 px-2 rounded-lg font-medium transition-all"
+                      title="Sync all emails (up to 500)"
+                    >
+                      All
                     </button>
                   </div>
                 </div>
@@ -412,36 +418,39 @@ Do you want to sign out now and switch accounts?`;
               <p className="text-gray-500 text-sm mt-2">Create your first category to organize your emails with AI</p>
             </div>
           ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {categories.map((category) => (
-                <div
-                  key={category.id}
-                  onClick={() => handleCategoryClick(category.id)}
-                  className="group bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 shadow-lg hover:shadow-xl border border-gray-200 hover:border-purple-300 cursor-pointer transition-all hover:scale-105"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-gray-900 group-hover:text-purple-600 transition-colors mb-2">
-                        {category.name}
-                      </h3>
-                      <p className="text-sm text-gray-600 line-clamp-2 mb-3">
-                        {category.description}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-700 rounded-lg text-xs font-semibold">
-                          <Mail className="w-3.5 h-3.5" />
-                          {category.email_count || 0} emails
-                        </span>
+            <>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {categories
+                  .slice((categoryPage - 1) * categoriesPerPage, categoryPage * categoriesPerPage)
+                  .map((category) => (
+                  <div
+                    key={category.id}
+                    onClick={() => handleCategoryClick(category.id)}
+                    className="group bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 shadow-lg hover:shadow-xl border border-gray-200 hover:border-purple-300 cursor-pointer transition-all hover:scale-105"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-bold text-gray-900 group-hover:text-purple-600 transition-colors mb-2">
+                          {category.name}
+                        </h3>
+                        <p className="text-sm text-gray-600 line-clamp-2 mb-3">
+                          {category.description}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-700 rounded-lg text-xs font-semibold">
+                            <Mail className="w-3.5 h-3.5" />
+                            {category.email_count || 0} emails
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteCategory(category.id, category.name);
-                      }}
-                      className="text-gray-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                      title="Delete category"
-                    >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteCategory(category.id, category.name);
+                        }}
+                        className="text-gray-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                        title="Delete category"
+                      >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -451,6 +460,30 @@ Do you want to sign out now and switch accounts?`;
                 </div>
               ))}
             </div>
+            
+            {/* Pagination Controls */}
+            {categories.length > categoriesPerPage && (
+              <div className="flex items-center justify-center gap-2 mt-8">
+                <button
+                  onClick={() => setCategoryPage(p => Math.max(1, p - 1))}
+                  disabled={categoryPage === 1}
+                  className="px-4 py-2 border-2 border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  Previous
+                </button>
+                <span className="px-4 py-2 text-sm text-gray-600">
+                  Page {categoryPage} of {Math.ceil(categories.length / categoriesPerPage)}
+                </span>
+                <button
+                  onClick={() => setCategoryPage(p => Math.min(Math.ceil(categories.length / categoriesPerPage), p + 1))}
+                  disabled={categoryPage === Math.ceil(categories.length / categoriesPerPage)}
+                  className="px-4 py-2 border-2 border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  Next
+                </button>
+              </div>
+            )}
+            </>
           )}
         </section>
       </main>
@@ -509,6 +542,116 @@ Do you want to sign out now and switch accounts?`;
               >
                 Create Category
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Delete Category */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Delete Category</h3>
+                <p className="text-sm text-gray-600">This action cannot be undone</p>
+              </div>
+            </div>
+            
+            <p className="text-gray-700 mb-6">
+              Are you sure you want to delete the category <strong>"{confirmDelete.categoryName}"</strong>? 
+              This will also remove all emails in this category from the app.
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteCategory}
+                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-colors shadow-lg shadow-red-500/30"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Delete Gmail Account */}
+      {confirmDeleteAccount && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Remove Gmail Account</h3>
+                <p className="text-sm text-gray-600">This action cannot be undone</p>
+              </div>
+            </div>
+            
+            <p className="text-gray-700 mb-6">
+              Are you sure you want to remove the account <strong>"{confirmDeleteAccount.email}"</strong>? 
+              This will also delete all emails from this account.
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDeleteAccount(null)}
+                className="flex-1 px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeDeleteAccount}
+                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-colors shadow-lg shadow-red-500/30"
+              >
+                Remove Account
+              </button>
+            </div>
+                    </div>
+        </div>
+      )}
+
+      {/* Sync Progress Overlay - Blocks interaction during sync */}
+      {isSyncing && syncProgress && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 mx-4">
+            <div className="flex flex-col items-center gap-6">
+              {/* Animated spinner */}
+              <div className="relative">
+                <div className="w-20 h-20 border-4 border-indigo-200 rounded-full"></div>
+                <div className="w-20 h-20 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
+              </div>
+              
+              {/* Progress message */}
+              <div className="text-center">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  Syncing Emails...
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {syncProgress}
+                </p>
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                  <RefreshCcw className="w-4 h-4 animate-spin" />
+                  <span>Processing with AI...</span>
+                </div>
+              </div>
+              
+              {/* Info message */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 w-full">
+                <p className="text-sm text-blue-800 text-center">
+                  ⏱️ This may take a few moments depending on the number of emails
+                </p>
+              </div>
             </div>
           </div>
         </div>

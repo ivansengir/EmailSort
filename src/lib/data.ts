@@ -113,7 +113,11 @@ export async function executeBulkAction(action: BulkAction, payload: { emailIds:
   return data;
 }
 
-export async function invokeEmailSync(gmailAccountId?: string, fullSync = true) {
+export async function invokeEmailSync(
+  gmailAccountId?: string, 
+  fullSync = true, 
+  syncMode?: 'last30' | 'all'
+) {
   try {
     // Get the current session to ensure we have a valid token
     const { data: { session } } = await supabase.auth.getSession();
@@ -125,6 +129,9 @@ export async function invokeEmailSync(gmailAccountId?: string, fullSync = true) 
     const body: Record<string, unknown> = { fullSync };
     if (gmailAccountId) {
       body.gmailAccountId = gmailAccountId;
+    }
+    if (syncMode) {
+      body.syncMode = syncMode;
     }
 
     const { error, data } = await supabase.functions.invoke('import-emails', {

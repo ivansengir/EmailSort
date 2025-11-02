@@ -32,6 +32,7 @@ interface ImportRequestBody {
   maxResults?: number;
   query?: string;
   fullSync?: boolean; // Force full sync, ignoring last_sync_at
+  syncMode?: 'last30' | 'all'; // New: sync mode selector
 }
 
 serve(async (req: Request) => {
@@ -91,9 +92,17 @@ serve(async (req: Request) => {
   }
 
   const body = (await req.json().catch(() => ({}))) as ImportRequestBody;
-  const { gmailAccountId, maxResults = 10, query, fullSync = false } = body;
+  const { gmailAccountId, maxResults = 10, query, fullSync = false, syncMode } = body;
   
-  console.log("[import-emails] Request params:", { gmailAccountId, maxResults, query, fullSync });
+  // Determine actual maxResults based on syncMode
+  let actualMaxResults = maxResults;
+  if (syncMode === 'last30') {
+    actualMaxResults = 30;
+  } else if (syncMode === 'all') {
+    actualMaxResults = 500; // Limit to 500 for safety, but process all available
+  }
+  
+  console.log("[import-emails] Request params:", { gmailAccountId, maxResults: actualMaxResults, query, fullSync, syncMode });
 
   const { data: accounts, error: accountsError } = await supabase
     .from("gmail_accounts")
@@ -138,6 +147,29 @@ serve(async (req: Request) => {
       syncedEmails: [],
       needsCategories: true 
     }, { status: 200 });
+  }
+
+  // Ensure "Others" category exists for emails that don't fit existing categories
+  let othersCategory = typedCategories.find(c => c.name.toLowerCase() === 'others');
+  if (!othersCategory) {
+    console.log("[import-emails] Creating 'Others' category automatically...");
+    const { data: newOthersCategory, error: createOthersError } = await supabase
+      .from("categories")
+      .insert({
+        user_id: dbUserId,
+        name: "Others",
+        description: "Emails that don't fit into any specific category"
+      })
+      .select()
+      .single();
+    
+    if (createOthersError) {
+      console.error("[import-emails] Failed to create Others category:", createOthersError);
+    } else {
+      othersCategory = newOthersCategory as CategoryRow;
+      typedCategories.push(othersCategory);
+      console.log("[import-emails] 'Others' category created:", othersCategory.id);
+    }
   }
 
   interface SyncedEmail {
@@ -202,7 +234,7 @@ serve(async (req: Request) => {
       console.log("[import-emails] Calling Gmail API...");
       const list = await listRecentMessages(accessToken, searchQuery);
       console.log("[import-emails] Gmail API response:", JSON.stringify(list));
-      const messages = (list.messages ?? []).slice(0, maxResults);
+      const messages = (list.messages ?? []).slice(0, actualMaxResults);
       console.log("[import-emails] Messages after slicing:", messages.length);
 
       let processedCount = 0;
@@ -309,19 +341,42 @@ serve(async (req: Request) => {
         
         processedCount++;
         
-        // Add delay to avoid OpenAI rate limits (200k tokens/min)
-        // Wait 300ms between emails to stay under the limit
+        // Dynamic delay based on sync mode to avoid OpenAI rate limits
+        // OpenAI gpt-4o-mini: 500 requests/min, 200k tokens/min
+        // For 'all' mode: wait 500ms between emails (max 120/min)
+        // For 'last30' mode: wait 300ms between emails (max 200/min)
+        // For normal mode: wait 200ms between emails
+        let delayMs = 200;
+        if (syncMode === 'all') {
+          delayMs = 500;
+        } else if (syncMode === 'last30') {
+          delayMs = 300;
+        }
+        
         if (processedCount < messages.length) {
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise(resolve => setTimeout(resolve, delayMs));
         }
         } catch (messageError) {
           console.error(`[import-emails] Error processing message ${messageMeta.id}:`, messageError);
           errorCount++;
           
-          // If it's a rate limit error, wait longer before continuing
-          if (messageError instanceof Error && messageError.message.includes('rate_limit')) {
-            console.log('[import-emails] Rate limit hit, waiting 2 seconds...');
-            await new Promise(resolve => setTimeout(resolve, 2000));
+          // Enhanced rate limit detection and handling
+          const errorMessage = messageError instanceof Error ? messageError.message : String(messageError);
+          const isRateLimit = errorMessage.toLowerCase().includes('rate_limit') || 
+                             errorMessage.toLowerCase().includes('429') ||
+                             errorMessage.toLowerCase().includes('too many requests');
+          
+          if (isRateLimit) {
+            console.warn('[import-emails] ⚠️ OpenAI rate limit detected! Pausing for 10 seconds...');
+            
+            // Add rate limit info to response
+            syncedEmails.push({
+              error: 'RATE_LIMIT_HIT',
+              gmailMessageId: messageMeta.id,
+            });
+            
+            // Wait 10 seconds before continuing
+            await new Promise(resolve => setTimeout(resolve, 10000));
           }
         }
       }
@@ -341,5 +396,14 @@ serve(async (req: Request) => {
     }
   }
 
-  return jsonResponse({ syncedEmails });
+  // Check if rate limit was hit during processing
+  const rateLimitHit = syncedEmails.some(e => e.error === 'RATE_LIMIT_HIT');
+  
+  return jsonResponse({ 
+    syncedEmails,
+    rateLimitHit,
+    message: rateLimitHit 
+      ? '⚠️ OpenAI rate limit reached. Some emails were not processed. Please wait 1 minute and try syncing again.'
+      : undefined
+  });
 });

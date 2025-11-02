@@ -120,12 +120,15 @@ export async function getMessage(accessToken: string, messageId: string) {
 }
 
 export async function archiveMessage(accessToken: string, messageId: string) {
-  await gmailFetch(accessToken, `users/me/messages/${messageId}/modify`, {
+  console.log(`[gmail] Archiving message ${messageId} (removing INBOX label)...`);
+  const response = await gmailFetch(accessToken, `users/me/messages/${messageId}/modify`, {
     method: "POST",
     body: JSON.stringify({
       removeLabelIds: ["INBOX"],
     }),
   });
+  console.log(`[gmail] ✓ Message ${messageId} archived successfully`);
+  return response;
 }
 
 export async function moveMessageToTrash(accessToken: string, messageId: string) {

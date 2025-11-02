@@ -9,7 +9,7 @@ import {
   clearSelectionsForCategory,
 } from '../lib/data';
 import type { Category, Email } from '../types';
-import { ArrowLeft, Trash2, MailOpen, ShieldCheck, RefreshCcw, Mail, CheckSquare, Square } from 'lucide-react';
+import { ArrowLeft, Trash2, MailOpen, ShieldCheck, RefreshCcw, Mail, CheckSquare, Square, FileText, Sparkles } from 'lucide-react';
 import { EmailDetailModal } from '../components/EmailDetailModal';
 
 export function CategoryPage() {
@@ -21,7 +21,11 @@ export function CategoryPage() {
   const [activeEmail, setActiveEmail] = useState<Email | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRunningAction, setIsRunningAction] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [emailPage, setEmailPage] = useState(1);
+  const emailsPerPage = 10;
 
   const category = useMemo(
     () => categories.find((cat: Category) => cat.id === categoryId) ?? null,
@@ -38,6 +42,7 @@ export function CategoryPage() {
     setCategories(categoryList);
     setEmails(emailList);
     setSelectedEmails([]);
+    setEmailPage(1); // Reset to first page when loading new data
     setIsLoading(false);
   }, [categoryId]);
 
@@ -117,14 +122,38 @@ export function CategoryPage() {
     }
   }
 
-  async function handleResync() {
+  async function handleResync(syncMode?: 'last30' | 'all') {
     try {
-      setToast('Triggering Gmail sync for this category...');
-      await invokeEmailSync();
+      if (syncMode === 'all') {
+        const confirmed = confirm(
+          '⚠️ Sync All will process up to 500 emails. This may take several minutes and could hit OpenAI rate limits.\n\n' +
+          'If rate limits are reached, wait 1 minute and click Sync All again to continue.\n\n' +
+          'Continue?'
+        );
+        if (!confirmed) return;
+      }
+      
+      setIsSyncing(true);
+      const modeText = syncMode === 'all' ? 'all emails (up to 500)' : syncMode === 'last30' ? 'last 30 emails' : 'new emails';
+      setSyncProgress(`Syncing ${modeText}... Please wait, do not close this page.`);
+      setToast(null); // Clear previous toast
+      
+      const result = await invokeEmailSync(undefined, true, syncMode);
+      
+      if (result?.rateLimitHit) {
+        setToast('⚠️ OpenAI rate limit reached! Wait 1 minute and try syncing again.');
+      } else {
+        const imported = result?.syncedEmails?.filter((e: { error?: string }) => !e.error).length || 0;
+        setToast(`✓ Sync completed - ${imported} emails imported`);
+      }
+      
       await loadCategoryData();
     } catch (error) {
       console.error('Sync failed', error);
       setToast('Sync failed. Review console logs.');
+    } finally {
+      setIsSyncing(false);
+      setSyncProgress(null);
     }
   }
 
@@ -144,12 +173,40 @@ export function CategoryPage() {
             
             <div className="flex items-center gap-3">
               <button
-                onClick={handleResync}
-                className="flex items-center gap-2 px-4 py-2 text-sm border-2 border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 hover:border-purple-300 transition-all"
+                onClick={() => navigate('/unsubscribe-logs')}
+                className="flex items-center gap-2 px-4 py-2 text-sm border-2 border-gray-200 rounded-xl text-gray-700 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600 transition-all"
+                title="View unsubscribe logs"
               >
-                <RefreshCcw className="w-4 h-4" />
-                Sync
+                <FileText className="w-4 h-4" />
+                Unsubscribe Logs
               </button>
+              
+              {/* Sync options */}
+              <div className="flex items-center gap-1 border-2 border-gray-200 rounded-xl p-1">
+                <button
+                  onClick={() => handleResync()}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-lg transition-all"
+                  title="Sync new emails only"
+                >
+                  <RefreshCcw className="w-3 h-3" />
+                  New
+                </button>
+                <button
+                  onClick={() => handleResync('last30')}
+                  className="px-3 py-1.5 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded-lg transition-all"
+                  title="Sync last 30 emails"
+                >
+                  Last 30
+                </button>
+                <button
+                  onClick={() => handleResync('all')}
+                  className="px-3 py-1.5 text-xs text-gray-700 hover:bg-orange-50 hover:text-orange-700 rounded-lg transition-all"
+                  title="Sync all emails (up to 500)"
+                >
+                  All
+                </button>
+              </div>
+              
               <button
                 onClick={() => runBulkAction('delete')}
                 disabled={!selectedEmails.length || isRunningAction}
@@ -232,16 +289,19 @@ export function CategoryPage() {
               <p className="text-gray-500 text-sm mt-2">Sync your inbox to see emails here</p>
             </div>
           ) : (
-            emails.map((email) => {
-              const isSelected = selectedEmails.includes(email.id);
-              return (
-                <article
-                  key={email.id}
-                  className={`bg-gradient-to-br from-white to-gray-50 border-2 rounded-2xl shadow-sm p-6 transition-all hover:shadow-lg ${
-                    isSelected
-                      ? 'border-purple-500 ring-4 ring-purple-100 shadow-purple-200'
-                      : 'border-gray-200 hover:border-purple-300'
-                  }`}
+            <>
+              {emails
+                .slice((emailPage - 1) * emailsPerPage, emailPage * emailsPerPage)
+                .map((email) => {
+                const isSelected = selectedEmails.includes(email.id);
+                return (
+                  <article
+                    key={email.id}
+                    className={`bg-gradient-to-br from-white to-gray-50 border-2 rounded-2xl shadow-sm p-6 transition-all hover:shadow-lg ${
+                      isSelected
+                        ? 'border-purple-500 ring-4 ring-purple-100 shadow-purple-200'
+                        : 'border-gray-200 hover:border-purple-300'
+                    }`}
                 >
                   <div className="flex items-start gap-4">
                     <input
@@ -263,19 +323,85 @@ export function CategoryPage() {
                           {new Date(email.date).toLocaleDateString()}
                         </p>
                       </div>
-                      <p className="text-sm text-gray-700 leading-relaxed bg-gradient-to-br from-gray-50 to-white p-4 rounded-xl border border-gray-100">
-                        {email.ai_summary}
-                      </p>
+                      <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-100">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Sparkles className="w-4 h-4 text-indigo-600" />
+                          <span className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">AI Summary</span>
+                        </div>
+                        <p className="text-sm text-gray-700 leading-relaxed">
+                          {email.ai_summary}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </article>
               );
-            })
+            })}
+            
+            {/* Pagination Controls for Emails */}
+            {emails.length > emailsPerPage && (
+              <div className="flex items-center justify-center gap-2 mt-8 pt-8 border-t border-gray-200">
+                <button
+                  onClick={() => setEmailPage(p => Math.max(1, p - 1))}
+                  disabled={emailPage === 1}
+                  className="px-4 py-2 border-2 border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  Previous
+                </button>
+                <span className="px-4 py-2 text-sm text-gray-600">
+                  Page {emailPage} of {Math.ceil(emails.length / emailsPerPage)} ({emails.length} emails)
+                </span>
+                <button
+                  onClick={() => setEmailPage(p => Math.min(Math.ceil(emails.length / emailsPerPage), p + 1))}
+                  disabled={emailPage === Math.ceil(emails.length / emailsPerPage)}
+                  className="px-4 py-2 border-2 border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  Next
+                </button>
+              </div>
+            )}
+            </>
           )}
         </section>
       </main>
 
       <EmailDetailModal email={activeEmail} onClose={() => setActiveEmail(null)} />
+      
+      {/* Sync Progress Overlay - Blocks interaction during sync */}
+      {isSyncing && syncProgress && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 mx-4">
+            <div className="flex flex-col items-center gap-6">
+              {/* Animated spinner */}
+              <div className="relative">
+                <div className="w-20 h-20 border-4 border-indigo-200 rounded-full"></div>
+                <div className="w-20 h-20 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
+              </div>
+              
+              {/* Progress message */}
+              <div className="text-center">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  Syncing Emails...
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {syncProgress}
+                </p>
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                  <RefreshCcw className="w-4 h-4 animate-spin" />
+                  <span>Processing with AI...</span>
+                </div>
+              </div>
+              
+              {/* Info message */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 w-full">
+                <p className="text-sm text-blue-800 text-center">
+                  ⏱️ This may take a few moments depending on the number of emails
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
