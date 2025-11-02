@@ -1,0 +1,297 @@
+// @ts-expect-error - Deno edge function import resolved at deploy time.
+import OpenAI from "npm:openai@^4.0.0";
+import { requireEnv } from "./util.ts";
+
+let client: OpenAI | null = null;
+
+function getClient(): OpenAI {
+  if (!client) {
+    client = new OpenAI({ apiKey: requireEnv("OPENAI_API_KEY") });
+  }
+  return client;
+}
+
+interface CategorizationPromptInput {
+  categories: Array<{ id: string; name: string; description: string }>;
+  email: {
+    subject: string;
+    from: string;
+    snippet: string;
+    body: string;
+  };
+}
+
+export async function categorizeEmail(input: CategorizationPromptInput) {
+  const completion = await getClient().chat.completions.create({
+    model: "gpt-4.1-nano",
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are an email triage assistant. You must choose the best category for the email based strictly on the provided options. Return JSON only with keys categoryId, categoryName, confidence.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify(input),
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "EmailClassification",
+        schema: {
+          type: "object",
+          properties: {
+            categoryId: { type: "string" },
+            categoryName: { type: "string" },
+            confidence: { type: "number" },
+          },
+          required: ["categoryId", "categoryName", "confidence"],
+          additionalProperties: false,
+        },
+      },
+    },
+  });
+
+  const content = completion.choices[0]?.message?.content;
+  if (!content) {
+    throw new Error("Unexpected categorization response format");
+  }
+
+  return JSON.parse(content) as {
+    categoryId: string;
+    categoryName: string;
+    confidence: number;
+  };
+}
+
+export async function summarizeEmail(subject: string, body: string) {
+  const completion = await getClient().chat.completions.create({
+    model: "gpt-4.1-nano",
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are an assistant that summarizes emails in neutral tone. Limit to 2 concise sentences and mention key action items if any.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify({ subject, body }),
+      },
+    ],
+  });
+
+  const content = completion.choices[0]?.message?.content;
+  if (!content) {
+    throw new Error("Unexpected summary response format");
+  }
+
+  return content.trim();
+}
+
+/**
+ * Use AI to extract unsubscribe link from email content
+ */
+export async function extractUnsubscribeLinkWithAI(
+  htmlContent: string | null,
+  textContent: string | null
+): Promise<{ link: string | null; method: "http" | "mailto" | null }> {
+  console.log("[AI] Analyzing email for unsubscribe link...");
+
+  const content = htmlContent || textContent || "";
+  
+  // Don't truncate - we need the full email to find footer links
+  // Most emails are under 100KB anyway
+  const emailContent = content.length > 50000 
+    ? content.substring(0, 50000) + "...[truncated]" 
+    : content;
+
+  console.log("[AI] Email content length:", emailContent.length);
+
+  const completion = await getClient().chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: "You are an expert at finding unsubscribe links in emails. You must find ANY link that allows unsubscribing, in ANY language. Return ONLY the complete URL, nothing else."
+      },
+      {
+        role: "user",
+        content: `Analyze this email and find the unsubscribe link. 
+
+The link might be:
+- In the footer/bottom of the email
+- Associated with text like: "unsubscribe", "opt out", "opt-out", "darse de baja", "cancelar suscripción", "manage preferences", "gestionar preferencias", "configuración", "settings", "preferences"
+- A "mailto:" link for unsubscribe
+- ANY link that clearly allows the user to stop receiving emails
+
+EMAIL CONTENT:
+${emailContent}
+
+CRITICAL: Return ONLY the complete URL (including https:// or mailto:) or exactly "NO_LINK" if absolutely no unsubscribe method exists.
+Do not add any explanation, just the URL.`
+      }
+    ],
+    temperature: 0.1,
+    max_tokens: 300,
+  });
+
+  const result = completion.choices[0]?.message?.content?.trim() || "NO_LINK";
+  console.log("[AI] Raw AI response:", result);
+
+  if (result === "NO_LINK" || result.includes("NO_LINK")) {
+    console.log("[AI] ❌ AI couldn't find any unsubscribe link");
+    return { link: null, method: null };
+  }
+
+  // Extract URL from response (in case AI added extra text)
+  const urlMatch = result.match(/(https?:\/\/[^\s<>"']+|mailto:[^\s<>"']+)/i);
+  const link = urlMatch ? urlMatch[1] : result.trim();
+
+  const method = link.startsWith("mailto:") ? "mailto" : "http";
+  
+  console.log("[AI] ✓ Found link:", link, "method:", method);
+  return { link, method };
+}
+
+/**
+ * Use AI to analyze an unsubscribe page and determine next action
+ */
+export async function analyzeUnsubscribePageWithAI(
+  pageUrl: string,
+  pageHtml: string
+): Promise<{
+  needsAction: boolean;
+  actionType: "success" | "form" | "captcha" | "login" | "unknown";
+  formData?: Record<string, string>;
+  message: string;
+}> {
+  console.log("[AI] Analyzing unsubscribe page:", pageUrl);
+
+  // Truncate HTML to save tokens
+  const truncatedHtml = pageHtml.length > 12000 
+    ? pageHtml.substring(0, 12000) + "...[truncated]" 
+    : pageHtml;
+
+  const completion = await getClient().chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: "You are a web page analyzer. Return only valid JSON with the analysis."
+      },
+      {
+        role: "user",
+        content: `Analyze this unsubscribe page and determine the status:
+
+Page URL: ${pageUrl}
+
+Page HTML:
+${truncatedHtml}
+
+Respond in this exact JSON format:
+{
+  "status": "success" | "needs_form" | "needs_captcha" | "needs_login" | "unknown",
+  "confidence": "high" | "medium" | "low",
+  "message": "Brief explanation"
+}
+
+Guidelines:
+- "success": Page confirms unsubscribe is complete ("successfully unsubscribed", "you have been removed", "confirmado", "éxito")
+- "needs_form": Page has a simple form that needs a button click
+- "needs_captcha": Page requires CAPTCHA
+- "needs_login": Page requires authentication  
+- "unknown": Cannot determine
+
+Return only JSON.`
+      }
+    ],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+    max_tokens: 300,
+  });
+
+  const result = completion.choices[0]?.message?.content;
+  if (!result) {
+    throw new Error("No response from AI");
+  }
+
+  console.log("[AI] Page analysis response:", result);
+
+  const analysis = JSON.parse(result);
+  
+  const needsAction = analysis.status !== "success";
+  
+  let actionType: "success" | "form" | "captcha" | "login" | "unknown";
+  switch (analysis.status) {
+    case "success":
+      actionType = "success";
+      break;
+    case "needs_form":
+      actionType = "form";
+      break;
+    case "needs_captcha":
+      actionType = "captcha";
+      break;
+    case "needs_login":
+      actionType = "login";
+      break;
+    default:
+      actionType = "unknown";
+  }
+
+  console.log("[AI] ✓ Analysis complete:", actionType, "confidence:", analysis.confidence);
+
+  return {
+    needsAction,
+    actionType,
+    message: analysis.message || "Analysis complete"
+  };
+}
+
+/**
+ * Use AI to extract form data from HTML for auto-submission
+ */
+export async function extractFormDataWithAI(pageHtml: string): Promise<Record<string, string>> {
+  console.log("[AI] Extracting form data...");
+
+  const truncatedHtml = pageHtml.length > 10000 
+    ? pageHtml.substring(0, 10000) + "...[truncated]" 
+    : pageHtml;
+
+  const completion = await getClient().chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: "You are an HTML form analyzer. Extract form fields that can be auto-filled. Return only valid JSON."
+      },
+      {
+        role: "user",
+        content: `Extract form data from this HTML needed to submit an unsubscribe form:
+
+${truncatedHtml}
+
+Return JSON with key-value pairs for all hidden inputs and auto-fillable fields.
+Only include fields that don't require user input.
+
+Format: { "field_name": "field_value" }
+
+Return only JSON.`
+      }
+    ],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+    max_tokens: 500,
+  });
+
+  const result = completion.choices[0]?.message?.content;
+  if (!result) {
+    return {};
+  }
+
+  const formData = JSON.parse(result);
+  console.log("[AI] ✓ Extracted form data:", Object.keys(formData).length, "fields");
+  
+  return formData;
+}

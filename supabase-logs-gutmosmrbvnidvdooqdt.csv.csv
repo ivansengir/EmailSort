@@ -1,0 +1,116 @@
+event_message,event_type,function_id,id,level,timestamp
+"[import-emails] Request params: {
+  gmailAccountId: ""5c3addf7-e761-469e-9b0a-33bfb0cc1b71"",
+  maxResults: 20,
+  query: undefined,
+  fullSync: true
+}
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,9b601bff-e6ae-4b40-83a2-a8a77b68d331,info,1762083426431000
+"[import-emails] User authenticated: 92f51029-47a8-450e-bc01-a525d346d1ee
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,cb17dbad-5294-4e5e-a552-9f163a07066f,info,1762083426430000
+"[import-emails] Auth header present: true
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,42e94570-6456-4754-bfe0-bd447e41fc55,info,1762083426107000
+"[import-emails] Authenticating user...
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,f0586125-502f-4742-9da6-b1d60001f639,info,1762083426106000
+"[import-emails] Request received: POST http://gutmosmrbvnidvdooqdt.supabase.co/import-emails
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,253f096b-0e4f-4b3b-9fcb-3e0136907a67,info,1762083426102000
+"Listening on http://localhost:9999/
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,2488c621-db5f-4412-871e-4357e0469a94,info,1762083426100000
+booted (time: 75ms),Boot,1bcdf3ea-3000-4007-961c-a26c44fd3508,fe740bad-d109-4232-85b5-7a66740b842d,log,1762083426092000
+"[import-emails] Request received: OPTIONS http://gutmosmrbvnidvdooqdt.supabase.co/import-emails
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,da3feadc-4bf7-40b2-a658-fd827d7fe7a5,info,1762083425841000
+"[import-emails] Handling OPTIONS preflight
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,7dd2324b-c87b-472e-bb27-5cc2a73384aa,info,1762083425841000
+"Listening on http://localhost:9999/
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,bfb9a7b5-416c-43ac-acff-2dd36ef0ef87,info,1762083425837000
+booted (time: 59ms),Boot,1bcdf3ea-3000-4007-961c-a26c44fd3508,734cdc8b-3065-4a62-9e06-4773975cf609,log,1762083425830000
+shutdown,Shutdown,1bcdf3ea-3000-4007-961c-a26c44fd3508,c2709172-0cba-49f6-a2a2-8e5713d1942a,log,1762083423689000
+shutdown,Shutdown,1bcdf3ea-3000-4007-961c-a26c44fd3508,5b7625da-bdb9-4e67-88b0-b4975c63337f,log,1762083423390000
+"[import-emails] Request params: {
+  gmailAccountId: ""5c3addf7-e761-469e-9b0a-33bfb0cc1b71"",
+  maxResults: 20,
+  query: undefined,
+  fullSync: true
+}
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,4fd40b0f-9291-43b9-9dc6-8d2a1d9a4b6b,info,1762083224020000
+"[import-emails] User authenticated: 92f51029-47a8-450e-bc01-a525d346d1ee
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,94330135-7d89-40c3-9af7-d19866b5c5bb,info,1762083224019000
+"[import-emails] Auth header present: true
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,08cee4d2-9b9a-4b4e-a33b-0ad1c186b238,info,1762083223679000
+"[import-emails] Authenticating user...
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,b161f2fe-8938-485f-a6c4-6876e8e044c2,info,1762083223678000
+"[import-emails] Request received: POST http://gutmosmrbvnidvdooqdt.supabase.co/import-emails
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,75264c98-a791-4d7b-ad95-0bf22d6e4cbf,info,1762083223674000
+"Listening on http://localhost:9999/
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,a6073de5-565d-48f9-ac50-aca539e64bf2,info,1762083223669000
+booted (time: 70ms),Boot,1bcdf3ea-3000-4007-961c-a26c44fd3508,422b3f3c-1227-4f4b-9123-708bddef590f,log,1762083223663000
+"[import-emails] Handling OPTIONS preflight
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,a260adf1-8d87-4d27-bcf6-4e054777cb49,info,1762083223371000
+"[import-emails] Request received: OPTIONS http://gutmosmrbvnidvdooqdt.supabase.co/import-emails
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,853d7ed5-a45c-43eb-aa6f-a7a1edc9815f,info,1762083223371000
+"Listening on http://localhost:9999/
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,6ca58ea2-af7b-4a7f-bc67-98dbe8c2d3ba,info,1762083223368000
+booted (time: 66ms),Boot,1bcdf3ea-3000-4007-961c-a26c44fd3508,76cd758d-275b-411f-a728-6ac50663cdd3,log,1762083223355000
+shutdown,Shutdown,1bcdf3ea-3000-4007-961c-a26c44fd3508,261e3823-ad53-4991-a05a-a4d8bfb4e683,log,1762083211033000
+shutdown,Shutdown,1bcdf3ea-3000-4007-961c-a26c44fd3508,e2b89c1d-5c96-4306-9eae-3be73e33f2f7,log,1762083210733000
+shutdown,Shutdown,1bcdf3ea-3000-4007-961c-a26c44fd3508,6b5842b9-c64c-4366-b104-1bfb505d710e,log,1762083189502000
+shutdown,Shutdown,1bcdf3ea-3000-4007-961c-a26c44fd3508,f5956f8c-4ff7-4869-b1bc-4cc886df8e2c,log,1762083189274000
+"[import-emails] User authenticated: 92f51029-47a8-450e-bc01-a525d346d1ee
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,c5df5ae9-1c37-42d9-b21d-6a019000489a,info,1762083011331000
+"[import-emails] Auth header present: true
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,46d299d1-a703-422f-b840-f11ade3e1f05,info,1762083011024000
+"[import-emails] Authenticating user...
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,d056e5a1-ce12-46b3-b147-dfeaef731215,info,1762083011023000
+"[import-emails] Request received: POST http://gutmosmrbvnidvdooqdt.supabase.co/import-emails
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,1f3852b6-8dd0-40ce-ab61-3dfeee0c5d01,info,1762083011019000
+"Listening on http://localhost:9999/
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,4f9a0ea1-d3cc-400a-bb09-b946a49b58bf,info,1762083011016000
+booted (time: 97ms),Boot,1bcdf3ea-3000-4007-961c-a26c44fd3508,e0061534-0513-43a8-989f-7dfd0346d601,log,1762083011010000
+"[import-emails] Request received: OPTIONS http://gutmosmrbvnidvdooqdt.supabase.co/import-emails
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,f8de895d-0055-404a-b598-389cf6443e9d,info,1762083010707000
+"[import-emails] Handling OPTIONS preflight
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,8b41090b-78e0-4ea4-ad1b-40ee0953fa8c,info,1762083010707000
+"Listening on http://localhost:9999/
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,df93de64-36ac-4dc6-9519-cd5ff4d01d97,info,1762083010704000
+booted (time: 60ms),Boot,1bcdf3ea-3000-4007-961c-a26c44fd3508,e66051ab-b86d-4283-a54b-085fcaf7fd76,log,1762083010697000
+"[import-emails] User authenticated: 92f51029-47a8-450e-bc01-a525d346d1ee
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,9bd85683-d52e-4c01-bf99-1d07226141f6,info,1762082989920000
+"[import-emails] Authenticating user...
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,27580cc2-481b-4220-844f-e5e882378877,info,1762082989493000
+"[import-emails] Auth header present: true
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,fba46a37-585f-4c83-b131-53a88b8ba61f,info,1762082989493000
+"[import-emails] Request received: POST http://gutmosmrbvnidvdooqdt.supabase.co/import-emails
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,61c41fa5-0fe6-4612-9366-94296fd8d70c,info,1762082989490000
+"Listening on http://localhost:9999/
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,08e0aafb-b55f-40e7-97ff-3c25c1200fb3,info,1762082989488000
+booted (time: 50ms),Boot,1bcdf3ea-3000-4007-961c-a26c44fd3508,79a0d660-4d13-4772-9069-05be080b3896,log,1762082989484000
+"[import-emails] Request received: OPTIONS http://gutmosmrbvnidvdooqdt.supabase.co/import-emails
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,4717138f-94eb-4b6b-8661-f4d58034be7b,info,1762082989245000
+"[import-emails] Handling OPTIONS preflight
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,db5d56b9-922c-4c3a-b19e-1b2d650645a0,info,1762082989245000
+"Listening on http://localhost:9999/
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,4fb2b2ed-ea5b-42c9-9aeb-6556dc4741b2,info,1762082989243000
+booted (time: 78ms),Boot,1bcdf3ea-3000-4007-961c-a26c44fd3508,1714908f-b734-483d-b668-83cb905f3017,log,1762082989237000
+shutdown,Shutdown,1bcdf3ea-3000-4007-961c-a26c44fd3508,b751a7e4-2c90-4855-af40-ddd04f3875ae,log,1762082977915000
+"[import-emails] Request received: OPTIONS http://gutmosmrbvnidvdooqdt.supabase.co/import-emails
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,beaf0d71-bafa-4d04-9636-5b1d5c9c8c3a,info,1762082777898000
+"[import-emails] Request received: OPTIONS http://gutmosmrbvnidvdooqdt.supabase.co/import-emails
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,601c27d5-ccd2-4458-b85c-ab611385adbf,info,1762082777898000
+"[import-emails] Handling OPTIONS preflight
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,3f9b0ab1-3624-4cc2-94e2-3d6662c214e5,info,1762082777898000
+"[import-emails] Handling OPTIONS preflight
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,f6e286d5-181b-4b07-9db6-d3bf9a090e04,info,1762082777898000
+"Listening on http://localhost:9999/
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,70e160d0-2877-4be3-b050-d16207415aa9,info,1762082777896000
+"Listening on http://localhost:9999/
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,152569d1-2c4a-478e-bcd3-a8a825de8342,info,1762082777896000
+booted (time: 56ms),Boot,1bcdf3ea-3000-4007-961c-a26c44fd3508,69dbbad8-f35e-45f2-8f4c-31dbc18c18c3,log,1762082777891000
+booted (time: 56ms),Boot,1bcdf3ea-3000-4007-961c-a26c44fd3508,9b76c86c-e0c2-475f-8269-60475a0c113e,log,1762082777891000
+shutdown,Shutdown,1bcdf3ea-3000-4007-961c-a26c44fd3508,481f1d51-7915-4a33-88f9-0e6e7cc5bf3d,log,1762082577894000
+"[import-emails] Request received: OPTIONS http://gutmosmrbvnidvdooqdt.supabase.co/import-emails
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,5b625c80-d460-4822-93c4-51bb6e1d3425,info,1762082377868000
+"[import-emails] Handling OPTIONS preflight
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,de4d7d40-fb2b-4e9c-9792-be8ae83c170f,info,1762082377868000
+"Listening on http://localhost:9999/
+",Log,1bcdf3ea-3000-4007-961c-a26c44fd3508,4fe12e09-e8d1-4241-9395-132763b5d085,info,1762082377864000
+booted (time: 89ms),Boot,1bcdf3ea-3000-4007-961c-a26c44fd3508,8a83d98e-9737-4ae4-9ba2-cfad6f9b49bd,log,1762082377858000

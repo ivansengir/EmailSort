@@ -1,0 +1,19 @@
+Name,US Salary,US Shares,Global Salary
+Support Engineer,90000,1000,
+Support Engineer II,100000,2000,
+Senior Support Engineer,110000,3000,
+Software Engineer,120000,4000,50000
+Software Engineer II,130000,5000,60000
+Senior Software Engineer,140000,6000,70000
+Senior Software Engineer II,150000,7000,80000
+Senior Software Engineer III,160000,8000,90000
+Staff Software Engineer,170000,9000,100000
+Staff Software Engineer II,180000,10000,110000
+Staff Software Engineer III,190000,11000,120000
+Principal Engineer,200000,12000,130000
+Principal Engineer II,210000,13000,140000
+Principal Engineer III,220000,14000,150000
+Architect,230000,15000,160000
+Senior Architect,240000,16000,170000
+Staff Architect,250000,17000,180000
+Principal Architect,260000,18000,190000

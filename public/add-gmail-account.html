@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Gmail Account - EmailSort</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+    <h1>Adding Gmail Account...</h1>
+    <div id="status">Initializing...</div>
+    
+    <script type="module">
+        const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+        const REDIRECT_URI = window.location.origin + '/gmail-callback.html';
+        
+        // Get user from parent window or storage
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('userId');
+        const accessToken = urlParams.get('access_token');
+        
+        if (!userId) {
+            document.getElementById('status').textContent = 'Error: User ID not provided';
+        } else if (!GOOGLE_CLIENT_ID) {
+            document.getElementById('status').textContent = 'Error: Google Client ID not configured';
+        } else {
+            document.getElementById('status').textContent = 'Redirecting to Google...';
+            
+            // Build OAuth URL
+            const oauth2Endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
+            const params = {
+                client_id: GOOGLE_CLIENT_ID,
+                redirect_uri: REDIRECT_URI,
+                response_type: 'code',
+                scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/userinfo.email',
+                access_type: 'offline',
+                prompt: 'consent select_account',
+                state: JSON.stringify({ userId, returnUrl: document.referrer }),
+            };
+            
+            const url = oauth2Endpoint + '?' + new URLSearchParams(params).toString();
+            window.location.href = url;
+        }
+    </script>
+</body>
+</html>
