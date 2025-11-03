@@ -10,32 +10,18 @@ interface Props {
 export function EmailDetailModal({ email, onClose }: Props) {
   const [showHtml, setShowHtml] = useState(true);
 
-  // Block body scroll and scroll to top when modal opens
+  // Block body scroll while modal is open
   useEffect(() => {
-    if (email) {
-      // Save current scroll position
-      const scrollY = window.scrollY;
-      
-      // Scroll to top
-      window.scrollTo(0, 0);
-      
-      // Block body scroll
-      document.body.style.overflow = 'hidden';
-      document.body.style.position = 'fixed';
-      document.body.style.top = `-${scrollY}px`;
-      document.body.style.width = '100%';
-      
-      return () => {
-        // Restore body scroll
-        document.body.style.overflow = '';
-        document.body.style.position = '';
-        document.body.style.top = '';
-        document.body.style.width = '';
-        
-        // Restore scroll position
-        window.scrollTo(0, scrollY);
-      };
+    if (!email) {
+      return;
     }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [email]);
 
   if (!email) {
@@ -46,7 +32,7 @@ export function EmailDetailModal({ email, onClose }: Props) {
     <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm z-50 overflow-y-auto">
       <div className="min-h-screen flex items-center justify-center p-4 py-8">
         <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full flex flex-col" style={{ maxHeight: 'calc(100vh - 8rem)' }}>
-        <header className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <header className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div>
             <h2 className="text-xl font-semibold text-gray-900">{email.subject}</h2>
             <p className="text-sm text-gray-600">From {email.from_email} · {new Date(email.date).toLocaleString()}</p>
@@ -67,14 +53,14 @@ export function EmailDetailModal({ email, onClose }: Props) {
               <X className="w-5 h-5" />
             </button>
           </div>
-        </header>
+          </header>
 
-        <section className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <section className="px-6 py-4 border-b border-gray-200 bg-gray-50">
           <p className="text-sm text-gray-500 uppercase tracking-wide mb-1">AI Summary</p>
           <p className="text-gray-800 leading-relaxed">{email.ai_summary}</p>
-        </section>
+          </section>
 
-        <main className="flex-1 overflow-y-auto px-6 py-6">
+          <main className="flex-1 overflow-y-auto px-6 py-6">
           {showHtml && email.content_html ? (
             <article
               className="prose max-w-none"
@@ -85,7 +71,7 @@ export function EmailDetailModal({ email, onClose }: Props) {
               {email.content_text || 'No plain text content available.'}
             </pre>
           )}
-        </main>
+          </main>
         </div>
       </div>
     </div>
