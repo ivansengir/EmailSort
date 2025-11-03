@@ -112,17 +112,23 @@ serve(async (req: Request) => {
     // Decrement old categories
     for (const [oldCategoryId, count] of categoryChanges.entries()) {
       for (let i = 0; i < count; i++) {
-        await supabase.rpc("decrement_category_email_count", {
+        const { error: decrementError } = await supabase.rpc("decrement_category_email_count", {
           category_uuid: oldCategoryId,
         });
+        if (decrementError) {
+          console.error(`[move-emails] Error decrementing count for ${oldCategoryId}:`, decrementError);
+        }
       }
     }
 
     // Increment new category
     for (let i = 0; i < emailsToMove.length; i++) {
-      await supabase.rpc("increment_category_email_count", {
+      const { error: incrementError } = await supabase.rpc("increment_category_email_count", {
         category_uuid: targetCategoryId,
       });
+      if (incrementError) {
+        console.error(`[move-emails] Error incrementing count for ${targetCategoryId}:`, incrementError);
+      }
     }
 
     console.log(`[move-emails] ✓ Successfully moved ${emailsToMove.length} emails to ${targetCategory.name}`);
@@ -137,8 +143,12 @@ serve(async (req: Request) => {
     );
   } catch (error) {
     console.error("[move-emails] Unexpected error:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ 
+        error: "Internal server error",
+        details: errorMessage 
+      }),
       { status: 500, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
     );
   }

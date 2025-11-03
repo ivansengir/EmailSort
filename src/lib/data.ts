@@ -296,7 +296,13 @@ export async function moveEmailsToCategory(emailIds: string[], targetCategoryId:
   });
 
   if (error) {
+    console.error('[moveEmailsToCategory] Error:', error);
     throw error;
+  }
+
+  if (data?.error) {
+    console.error('[moveEmailsToCategory] API Error:', data);
+    throw new Error(data.error + (data.details ? `: ${data.details}` : ''));
   }
 
   return data;

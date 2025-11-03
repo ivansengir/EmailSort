@@ -172,13 +172,19 @@ export function CategoryPage() {
       
       const result = await moveEmailsToCategory(selectedEmails, targetCategoryId);
       
-      setToast(`✓ Moved ${result.movedCount} emails to ${result.targetCategory}`);
-      setShowMoveModal(false);
-      
-      await loadCategoryData();
+      if (result?.success) {
+        setToast(`✓ Moved ${result.movedCount} emails to ${result.targetCategory}`);
+        setShowMoveModal(false);
+        await loadCategoryData();
+      } else {
+        const errorMsg = result?.error || 'Unknown error';
+        const details = result?.details ? ` (${result.details})` : '';
+        setToast(`Failed to move emails: ${errorMsg}${details}`);
+      }
     } catch (error) {
       console.error('Move emails failed', error);
-      setToast('Failed to move emails. Check console for details.');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setToast(`Failed to move emails: ${errorMessage}`);
     } finally {
       setIsMoving(false);
     }
