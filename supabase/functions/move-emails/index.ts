@@ -108,27 +108,32 @@ serve(async (req: Request) => {
       );
     }
 
-    // Update category counts
-    // Decrement old categories
-    for (const [oldCategoryId, count] of categoryChanges.entries()) {
-      for (let i = 0; i < count; i++) {
-        const { error: decrementError } = await supabase.rpc("decrement_category_email_count", {
-          category_uuid: oldCategoryId,
-        });
-        if (decrementError) {
-          console.error(`[move-emails] Error decrementing count for ${oldCategoryId}:`, decrementError);
+    // Update category counts (but don't fail if RPC errors occur)
+    try {
+      // Decrement old categories
+      for (const [oldCategoryId, count] of categoryChanges.entries()) {
+        for (let i = 0; i < count; i++) {
+          const { error: decrementError } = await supabase.rpc("decrement_category_email_count", {
+            category_uuid: oldCategoryId,
+          });
+          if (decrementError) {
+            console.error(`[move-emails] Warning: Error decrementing count for ${oldCategoryId}:`, decrementError);
+          }
         }
       }
-    }
 
-    // Increment new category
-    for (let i = 0; i < emailsToMove.length; i++) {
-      const { error: incrementError } = await supabase.rpc("increment_category_email_count", {
-        category_uuid: targetCategoryId,
-      });
-      if (incrementError) {
-        console.error(`[move-emails] Error incrementing count for ${targetCategoryId}:`, incrementError);
+      // Increment new category
+      for (let i = 0; i < emailsToMove.length; i++) {
+        const { error: incrementError } = await supabase.rpc("increment_category_email_count", {
+          category_uuid: targetCategoryId,
+        });
+        if (incrementError) {
+          console.error(`[move-emails] Warning: Error incrementing count for ${targetCategoryId}:`, incrementError);
+        }
       }
+    } catch (rpcError) {
+      // Log but don't fail - counts can be recalculated later
+      console.error(`[move-emails] Warning: RPC error updating counts:`, rpcError);
     }
 
     console.log(`[move-emails] ✓ Successfully moved ${emailsToMove.length} emails to ${targetCategory.name}`);

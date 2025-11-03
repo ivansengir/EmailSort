@@ -291,9 +291,13 @@ export async function fetchUnsubscribeLogs(limit = 20): Promise<UnsubscribeLog[]
 }
 
 export async function moveEmailsToCategory(emailIds: string[], targetCategoryId: string) {
+  console.log('[moveEmailsToCategory] Invoking move-emails function...', { emailIds, targetCategoryId });
+  
   const { error, data } = await supabase.functions.invoke('move-emails', {
     body: { emailIds, targetCategoryId },
   });
+
+  console.log('[moveEmailsToCategory] Response:', { error, data });
 
   if (error) {
     console.error('[moveEmailsToCategory] Error:', error);
