@@ -24,6 +24,8 @@ export function CategoryPage() {
   const [isRunningAction, setIsRunningAction] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<string | null>(null);
+  const [isUnsubscribing, setIsUnsubscribing] = useState(false);
+  const [unsubscribeProgress, setUnsubscribeProgress] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [emailPage, setEmailPage] = useState(1);
   const emailsPerPage = 10;
@@ -94,6 +96,39 @@ export function CategoryPage() {
     }
 
     try {
+      // Handle unsubscribe with loading overlay
+      if (action === 'unsubscribe') {
+        setIsUnsubscribing(true);
+        setUnsubscribeProgress(`Initializing AI agent to unsubscribe from ${selectedEmails.length} email${selectedEmails.length > 1 ? 's' : ''}...`);
+        
+        // Simulate different progress stages
+        const progressTimeout1 = setTimeout(() => {
+          setUnsubscribeProgress('AI agent is analyzing unsubscribe links...');
+        }, 2000);
+        
+        const progressTimeout2 = setTimeout(() => {
+          setUnsubscribeProgress('Processing unsubscribe requests...');
+        }, 4000);
+        
+        try {
+          await executeBulkAction(action, { emailIds: selectedEmails });
+          clearTimeout(progressTimeout1);
+          clearTimeout(progressTimeout2);
+          
+          // Redirect to logs page after completion
+          navigate('/unsubscribe-logs');
+        } catch (error) {
+          clearTimeout(progressTimeout1);
+          clearTimeout(progressTimeout2);
+          console.error('Unsubscribe failed', error);
+          setIsUnsubscribing(false);
+          setUnsubscribeProgress(null);
+          setToast('Unsubscribe failed. Check console for details.');
+        }
+        return;
+      }
+      
+      // Handle delete action normally
       setIsRunningAction(true);
       setToast(`Running ${action} on ${selectedEmails.length} emails...`);
       const result = await executeBulkAction(action, { emailIds: selectedEmails });
@@ -107,11 +142,7 @@ export function CategoryPage() {
         ).length;
         const failed = result.results.filter((r: { status: string }) => r.status === 'error').length;
         
-        if (action === 'delete') {
-          setToast(`✓ Deleted ${successful} emails${failed > 0 ? `, ${failed} failed` : ''}`);
-        } else {
-          setToast(`✓ Unsubscribe: ${successful} processed${failed > 0 ? `, ${failed} failed` : ''}. Check Logs for details.`);
-        }
+        setToast(`✓ Deleted ${successful} emails${failed > 0 ? `, ${failed} failed` : ''}`);
       } else {
         setToast('Bulk action completed.');
       }
@@ -485,6 +516,53 @@ export function CategoryPage() {
                 <p className="text-sm text-blue-800 text-center">
                   ⏱️ This may take a few moments depending on the number of emails
                 </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unsubscribe Progress Overlay - Blocks interaction during unsubscribe */}
+      {isUnsubscribing && unsubscribeProgress && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 mx-4">
+            <div className="flex flex-col items-center gap-6">
+              {/* Animated spinner with robot icon */}
+              <div className="relative">
+                <div className="w-20 h-20 border-4 border-green-200 rounded-full"></div>
+                <div className="w-20 h-20 border-4 border-green-600 border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
+                <div className="absolute inset-0 flex items-center justify-center text-3xl">
+                  🤖
+                </div>
+              </div>
+              
+              {/* Progress message */}
+              <div className="text-center">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  AI Agent Working...
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {unsubscribeProgress}
+                </p>
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                  <RefreshCcw className="w-4 h-4 animate-spin" />
+                  <span>Unsubscribing from emails...</span>
+                </div>
+              </div>
+              
+              {/* Warning message for first time / cold start */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 w-full">
+                <div className="flex items-start gap-2">
+                  <span className="text-lg">⚠️</span>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900 mb-1">
+                      First time may take longer
+                    </p>
+                    <p className="text-xs text-amber-800">
+                      Docker container needs to start (cold start). Subsequent requests will be faster.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
