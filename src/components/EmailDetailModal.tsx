@@ -43,8 +43,8 @@ export function EmailDetailModal({ email, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full my-8 flex flex-col" style={{ maxHeight: 'calc(100vh - 4rem)' }}>
+    <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-start justify-center z-50 p-4 pt-8 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full flex flex-col" style={{ maxHeight: 'calc(100vh - 4rem)' }}>
         <header className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div>
             <h2 className="text-xl font-semibold text-gray-900">{email.subject}</h2>
