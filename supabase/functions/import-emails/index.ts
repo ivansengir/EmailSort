@@ -241,138 +241,145 @@ serve(async (req: Request) => {
       let skippedCount = 0;
       let errorCount = 0;
 
-      for (const messageMeta of messages) {
-        try {
-          console.log(`[import-emails] Processing message ${processedCount + skippedCount + errorCount + 1}/${messages.length}: ${messageMeta.id}`);
-          
-          const existing = await supabase
-            .from("emails")
-            .select("id")
-            .eq("gmail_account_id", account.id)
-            .eq("gmail_message_id", messageMeta.id)
-            .maybeSingle();
+      // OPTIMIZED: Process in parallel batches of 10 emails
+      const BATCH_SIZE = 10;
+      const categoryCountUpdates = new Map<string, number>();
 
-          if (existing.data) {
-            console.log(`[import-emails] Message ${messageMeta.id} already exists, skipping`);
-            skippedCount++;
-            continue;
-          }
+      console.log(`[import-emails] Processing ${messages.length} emails in batches of ${BATCH_SIZE}...`);
 
-          console.log(`[import-emails] Fetching full message details for ${messageMeta.id}`);
-          const message = await getMessage(accessToken, messageMeta.id);
-        const headers = message.payload?.headers ?? [];
-
-        const subject = headers.find((h) => h.name.toLowerCase() === "subject")?.value ?? "(sin asunto)";
-        const from = headers.find((h) => h.name.toLowerCase() === "from")?.value ?? "";
-        const to = headers.find((h) => h.name.toLowerCase() === "to")?.value ?? "";
-        const dateHeader = headers.find((h) => h.name.toLowerCase() === "date")?.value ?? new Date().toISOString();
-        const date = new Date(dateHeader).toISOString();
-
-        const plainBody = extractPlainText(message.payload);
-        const htmlBody = extractHtml(message.payload);
-        const snippet = message.snippet ?? plainBody.slice(0, 120);
-
-        // OPTIMIZED: Combined AI call (50% reduction in API calls)
-        const bodyContent = plainBody || htmlBody || snippet;
-        const truncatedBody = bodyContent.substring(0, 3000); // Limit to reduce tokens
+      for (let i = 0; i < messages.length; i += BATCH_SIZE) {
+        const batch = messages.slice(i, i + BATCH_SIZE);
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(messages.length / BATCH_SIZE);
         
-        const analysis = await categorizeAndSummarizeEmail({
-          categories: typedCategories.map((c) => ({ id: c.id, name: c.name, description: c.description })),
-          email: {
-            subject,
-            from,
-            snippet,
-            body: truncatedBody,
-          },
-        });
+        console.log(`[import-emails] 📦 Batch ${batchNum}/${totalBatches}: Processing ${batch.length} emails in parallel...`);
 
-        const categorization = {
-          categoryId: analysis.categoryId,
-          categoryName: analysis.categoryName,
-          confidence: analysis.confidence,
-        };
-        const summary = analysis.summary;
+        const batchResults = await Promise.allSettled(
+          batch.map(async (messageMeta) => {
+            try {
+              // Check if already exists
+              const existing = await supabase
+                .from("emails")
+                .select("id")
+                .eq("gmail_account_id", account.id)
+                .eq("gmail_message_id", messageMeta.id)
+                .maybeSingle();
 
-        const { data: inserted, error: insertError } = await supabase
-          .from("emails")
-          .insert({
-            user_id: dbUserId,
-            gmail_account_id: account.id,
-            category_id: categorization.categoryId,
-            gmail_message_id: message.id,
-            gmail_thread_id: message.threadId,
-            subject,
-            from_email: from,
-            from_name: from,
-            to_email: to,
-            date,
-            content_text: plainBody,
-            content_html: htmlBody,
-            ai_summary: summary,
-            categorization_confidence: categorization.confidence,
-            is_archived: true,
-            is_deleted: false,
+              if (existing.data) {
+                return { status: 'skipped' as const, messageId: messageMeta.id };
+              }
+
+              // Fetch full message
+              const message = await getMessage(accessToken, messageMeta.id);
+              const headers = message.payload?.headers ?? [];
+
+              const subject = headers.find((h) => h.name.toLowerCase() === "subject")?.value ?? "(sin asunto)";
+              const from = headers.find((h) => h.name.toLowerCase() === "from")?.value ?? "";
+              const to = headers.find((h) => h.name.toLowerCase() === "to")?.value ?? "";
+              const dateHeader = headers.find((h) => h.name.toLowerCase() === "date")?.value ?? new Date().toISOString();
+              const date = new Date(dateHeader).toISOString();
+
+              const plainBody = extractPlainText(message.payload);
+              const htmlBody = extractHtml(message.payload);
+              const snippet = message.snippet ?? plainBody.slice(0, 120);
+
+              // OPTIMIZED: Combined AI call
+              const bodyContent = plainBody || htmlBody || snippet;
+              const truncatedBody = bodyContent.substring(0, 3000);
+              
+              const analysis = await categorizeAndSummarizeEmail({
+                categories: typedCategories.map((c) => ({ id: c.id, name: c.name, description: c.description })),
+                email: { subject, from, snippet, body: truncatedBody },
+              });
+
+              // Insert email
+              const { data: inserted, error: insertError } = await supabase
+                .from("emails")
+                .insert({
+                  user_id: dbUserId,
+                  gmail_account_id: account.id,
+                  category_id: analysis.categoryId,
+                  gmail_message_id: message.id,
+                  gmail_thread_id: message.threadId,
+                  subject,
+                  from_email: from,
+                  from_name: from,
+                  to_email: to,
+                  date,
+                  content_text: plainBody,
+                  content_html: htmlBody,
+                  ai_summary: analysis.summary,
+                  categorization_confidence: analysis.confidence,
+                  is_archived: true,
+                  is_deleted: false,
+                })
+                .select()
+                .single();
+
+              if (insertError) {
+                throw insertError;
+              }
+
+              // Archive in Gmail (fire and forget to not slow down)
+              archiveMessage(accessToken, message.id).catch(err => 
+                console.error(`[import-emails] Archive failed for ${message.id}:`, err)
+              );
+
+              return {
+                status: 'success' as const,
+                messageId: messageMeta.id,
+                emailId: inserted.id,
+                categoryId: analysis.categoryId,
+                summary: analysis.summary,
+              };
+            } catch (error) {
+              console.error(`[import-emails] Error processing ${messageMeta.id}:`, error);
+              return { 
+                status: 'error' as const, 
+                messageId: messageMeta.id, 
+                error: error instanceof Error ? error.message : String(error) 
+              };
+            }
           })
-          .select()
-          .single();
+        );
 
-        if (insertError) {
-          console.error("[import-emails] Failed to insert email:", insertError);
-          errorCount++;
-          continue;
-        }
-
-        console.log(`[import-emails] Email inserted successfully: ${inserted.id}`);
-
-        const { error: countUpdateError } = await supabase.rpc("increment_category_email_count", {
-          category_uuid: categorization.categoryId,
-        });
-
-        if (countUpdateError) {
-          console.error("[import-emails] Failed to update category count:", countUpdateError);
-        }
-
-        console.log(`[import-emails] Archiving message ${message.id} in Gmail...`);
-        try {
-          await archiveMessage(accessToken, message.id);
-          console.log(`[import-emails] ✓ Message ${message.id} archived in Gmail`);
-        } catch (archiveError) {
-          console.error(`[import-emails] ✗ Failed to archive message ${message.id}:`, archiveError);
-          // Continue even if archive fails
-        }
-
-        syncedEmails.push({
-          emailId: inserted.id,
-          gmailMessageId: message.id,
-          categoryId: categorization.categoryId,
-          summary,
-        });
-        
-        processedCount++;
-        
-        // OPTIMIZED: No delays needed with gpt-5-mini (400k TPM, 200 RPM)
-        } catch (messageError) {
-          console.error(`[import-emails] Error processing message ${messageMeta.id}:`, messageError);
-          errorCount++;
-          
-          // Enhanced rate limit detection and handling
-          const errorMessage = messageError instanceof Error ? messageError.message : String(messageError);
-          const isRateLimit = errorMessage.toLowerCase().includes('rate_limit') || 
-                             errorMessage.toLowerCase().includes('429') ||
-                             errorMessage.toLowerCase().includes('too many requests');
-          
-          if (isRateLimit) {
-            console.warn('[import-emails] ⚠️ OpenAI rate limit detected! Pausing for 10 seconds...');
-            
-            // Add rate limit info to response
-            syncedEmails.push({
-              error: 'RATE_LIMIT_HIT',
-              gmailMessageId: messageMeta.id,
-            });
-            
-            // Wait 10 seconds before continuing
-            await new Promise(resolve => setTimeout(resolve, 10000));
+        // Process batch results
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled') {
+            const data = result.value;
+            if (data.status === 'success') {
+              processedCount++;
+              syncedEmails.push({
+                emailId: data.emailId,
+                gmailMessageId: data.messageId,
+                categoryId: data.categoryId,
+                summary: data.summary,
+              });
+              // Track category updates
+              categoryCountUpdates.set(
+                data.categoryId,
+                (categoryCountUpdates.get(data.categoryId) || 0) + 1
+              );
+            } else if (data.status === 'skipped') {
+              skippedCount++;
+            } else {
+              errorCount++;
+            }
+          } else {
+            errorCount++;
           }
+        }
+
+        console.log(`[import-emails] ✓ Batch ${batchNum} complete: ${processedCount} processed, ${skippedCount} skipped, ${errorCount} errors`);
+      }
+
+      // Update category counts in bulk
+      console.log(`[import-emails] Updating ${categoryCountUpdates.size} category counts...`);
+      for (const [categoryId, count] of categoryCountUpdates.entries()) {
+        for (let i = 0; i < count; i++) {
+          await supabase.rpc("increment_category_email_count", {
+            category_uuid: categoryId,
+          });
         }
       }
       
