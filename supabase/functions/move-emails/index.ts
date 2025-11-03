@@ -8,7 +8,8 @@ serve(async (req: Request) => {
   }
 
   try {
-    const supabase = createClient(
+    // Create two clients: one for auth (with user token), one for admin operations
+    const authClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       {
@@ -16,6 +17,11 @@ serve(async (req: Request) => {
           headers: { Authorization: req.headers.get("Authorization")! },
         },
       }
+    );
+
+    const adminClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
     const { emailIds, targetCategoryId } = await req.json();
@@ -36,17 +42,19 @@ serve(async (req: Request) => {
 
     console.log(`[move-emails] Moving ${emailIds.length} emails to category ${targetCategoryId}`);
 
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser();
+    // Get current user (using auth client with user's token)
+    const { data: { user } } = await authClient.auth.getUser();
     if (!user) {
+      console.error("[move-emails] No user found in auth");
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
       );
     }
+    console.log(`[move-emails] User authenticated: ${user.id}`);
 
-    // Verify the target category exists and belongs to the user
-    const { data: targetCategory, error: categoryError } = await supabase
+    // Verify the target category exists and belongs to the user (using admin client)
+    const { data: targetCategory, error: categoryError } = await adminClient
       .from("categories")
       .select("id, name")
       .eq("id", targetCategoryId)
@@ -54,33 +62,38 @@ serve(async (req: Request) => {
       .single();
 
     if (categoryError || !targetCategory) {
+      console.error("[move-emails] Category not found or error:", categoryError);
       return new Response(
-        JSON.stringify({ error: "Target category not found or access denied" }),
+        JSON.stringify({ error: "Target category not found or access denied", details: categoryError?.message }),
         { status: 404, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
       );
     }
+    console.log(`[move-emails] Target category found: ${targetCategory.name}`);
 
-    // Get the emails to move (with their current categories)
-    const { data: emailsToMove, error: fetchError } = await supabase
+    // Get the emails to move (with their current categories) (using admin client)
+    console.log(`[move-emails] Fetching emails:`, emailIds);
+    const { data: emailsToMove, error: fetchError } = await adminClient
       .from("emails")
       .select("id, category_id")
       .in("id", emailIds)
       .eq("user_id", user.id);
 
-    if (fetchError || !emailsToMove) {
+    if (fetchError) {
       console.error("[move-emails] Error fetching emails:", fetchError);
       return new Response(
-        JSON.stringify({ error: "Failed to fetch emails" }),
+        JSON.stringify({ error: "Failed to fetch emails", details: fetchError.message }),
         { status: 500, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
       );
     }
 
-    if (emailsToMove.length === 0) {
+    if (!emailsToMove || emailsToMove.length === 0) {
+      console.error("[move-emails] No emails found:", { emailIds, userId: user.id });
       return new Response(
         JSON.stringify({ error: "No emails found or access denied" }),
         { status: 404, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
       );
     }
+    console.log(`[move-emails] Found ${emailsToMove.length} emails to move`);
 
     // Count how many emails are being moved from each category
     const categoryChanges = new Map<string, number>();
@@ -93,8 +106,9 @@ serve(async (req: Request) => {
       }
     }
 
-    // Update emails to new category
-    const { error: updateError } = await supabase
+    // Update emails to new category (using admin client to bypass RLS)
+    console.log(`[move-emails] Updating emails to category ${targetCategoryId}`);
+    const { error: updateError } = await adminClient
       .from("emails")
       .update({ category_id: targetCategoryId })
       .in("id", emailIds)
@@ -103,17 +117,18 @@ serve(async (req: Request) => {
     if (updateError) {
       console.error("[move-emails] Error updating emails:", updateError);
       return new Response(
-        JSON.stringify({ error: "Failed to move emails" }),
+        JSON.stringify({ error: "Failed to move emails", details: updateError.message }),
         { status: 500, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
       );
     }
+    console.log(`[move-emails] Emails updated successfully`);
 
     // Update category counts (but don't fail if RPC errors occur)
     try {
-      // Decrement old categories
+      // Decrement old categories (using admin client)
       for (const [oldCategoryId, count] of categoryChanges.entries()) {
         for (let i = 0; i < count; i++) {
-          const { error: decrementError } = await supabase.rpc("decrement_category_email_count", {
+          const { error: decrementError } = await adminClient.rpc("decrement_category_email_count", {
             category_uuid: oldCategoryId,
           });
           if (decrementError) {
@@ -122,9 +137,9 @@ serve(async (req: Request) => {
         }
       }
 
-      // Increment new category
+      // Increment new category (using admin client)
       for (let i = 0; i < emailsToMove.length; i++) {
-        const { error: incrementError } = await supabase.rpc("increment_category_email_count", {
+        const { error: incrementError } = await adminClient.rpc("increment_category_email_count", {
           category_uuid: targetCategoryId,
         });
         if (incrementError) {
