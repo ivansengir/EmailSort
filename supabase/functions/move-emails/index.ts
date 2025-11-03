@@ -51,7 +51,25 @@ serve(async (req: Request) => {
         { status: 401, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
       );
     }
-    console.log(`[move-emails] User authenticated: ${user.id}`);
+    console.log(`[move-emails] Auth user id: ${user.id}`);
+
+    // Find the actual user record by auth_id to get the correct user_id
+    const { data: dbUser, error: userError } = await adminClient
+      .from("users")
+      .select("id")
+      .eq("auth_id", user.id)
+      .maybeSingle();
+
+    if (userError || !dbUser) {
+      console.error("[move-emails] User not found in database:", userError);
+      return new Response(
+        JSON.stringify({ error: "User not found in database" }),
+        { status: 404, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
+      );
+    }
+    
+    const actualUserId = dbUser.id;
+    console.log(`[move-emails] Database user_id: ${actualUserId}`);
 
     // Verify the target category exists and belongs to the user (using admin client)
     const { data: targetCategory, error: categoryError } = await adminClient
@@ -76,11 +94,10 @@ serve(async (req: Request) => {
       );
     }
 
-    if (targetCategory.user_id !== user.id) {
+    if (targetCategory.user_id !== actualUserId) {
       console.error("[move-emails] Category belongs to different user");
       console.error(`[move-emails] Category user_id: ${targetCategory.user_id}`);
-      console.error(`[move-emails] Authenticated user_id: ${user.id}`);
-      console.error(`[move-emails] Match: ${targetCategory.user_id === user.id}`);
+      console.error(`[move-emails] Actual user_id: ${actualUserId}`);
       return new Response(
         JSON.stringify({ error: "Access denied to target category" }),
         { status: 403, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
@@ -95,7 +112,7 @@ serve(async (req: Request) => {
       .from("emails")
       .select("id, category_id")
       .in("id", emailIds)
-      .eq("user_id", user.id);
+      .eq("user_id", actualUserId);
 
     if (fetchError) {
       console.error("[move-emails] Error fetching emails:", fetchError);
@@ -131,7 +148,7 @@ serve(async (req: Request) => {
       .from("emails")
       .update({ category_id: targetCategoryId })
       .in("id", emailIds)
-      .eq("user_id", user.id);
+      .eq("user_id", actualUserId);
 
     if (updateError) {
       console.error("[move-emails] Error updating emails:", updateError);
