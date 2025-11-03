@@ -78,6 +78,9 @@ serve(async (req: Request) => {
 
     if (targetCategory.user_id !== user.id) {
       console.error("[move-emails] Category belongs to different user");
+      console.error(`[move-emails] Category user_id: ${targetCategory.user_id}`);
+      console.error(`[move-emails] Authenticated user_id: ${user.id}`);
+      console.error(`[move-emails] Match: ${targetCategory.user_id === user.id}`);
       return new Response(
         JSON.stringify({ error: "Access denied to target category" }),
         { status: 403, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
