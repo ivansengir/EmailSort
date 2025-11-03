@@ -10,7 +10,7 @@ import {
   extractPlainText,
   extractHtml,
 } from "../_shared/gmail.ts";
-import { categorizeEmail, summarizeEmail } from "../_shared/openai.ts";
+import { categorizeAndSummarizeEmail } from "../_shared/openai.ts";
 
 type GmailAccountRow = {
   id: string;
@@ -272,17 +272,26 @@ serve(async (req: Request) => {
         const htmlBody = extractHtml(message.payload);
         const snippet = message.snippet ?? plainBody.slice(0, 120);
 
-        const categorization = await categorizeEmail({
+        // OPTIMIZED: Combined AI call (50% reduction in API calls)
+        const bodyContent = plainBody || htmlBody || snippet;
+        const truncatedBody = bodyContent.substring(0, 3000); // Limit to reduce tokens
+        
+        const analysis = await categorizeAndSummarizeEmail({
           categories: typedCategories.map((c) => ({ id: c.id, name: c.name, description: c.description })),
           email: {
             subject,
             from,
             snippet,
-            body: plainBody || htmlBody,
+            body: truncatedBody,
           },
         });
 
-        const summary = await summarizeEmail(subject, plainBody || htmlBody || snippet);
+        const categorization = {
+          categoryId: analysis.categoryId,
+          categoryName: analysis.categoryName,
+          confidence: analysis.confidence,
+        };
+        const summary = analysis.summary;
 
         const { data: inserted, error: insertError } = await supabase
           .from("emails")
@@ -341,21 +350,7 @@ serve(async (req: Request) => {
         
         processedCount++;
         
-        // Dynamic delay based on sync mode to avoid OpenAI rate limits
-        // OpenAI gpt-5-mini-mini: 500 requests/min, 200k tokens/min
-        // For 'all' mode: wait 500ms between emails (max 120/min)
-        // For 'last30' mode: wait 300ms between emails (max 200/min)
-        // For normal mode: wait 200ms between emails
-        let delayMs = 200;
-        if (syncMode === 'all') {
-          delayMs = 500;
-        } else if (syncMode === 'last30') {
-          delayMs = 300;
-        }
-        
-        if (processedCount < messages.length) {
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-        }
+        // OPTIMIZED: No delays needed with gpt-5-mini (400k TPM, 200 RPM)
         } catch (messageError) {
           console.error(`[import-emails] Error processing message ${messageMeta.id}:`, messageError);
           errorCount++;

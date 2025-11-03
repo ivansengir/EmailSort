@@ -90,6 +90,56 @@ export async function summarizeEmail(subject: string, body: string) {
 }
 
 /**
+ * OPTIMIZED: Categorize AND summarize in a single OpenAI call
+ * Reduces API calls by 50% and processing time significantly
+ */
+export async function categorizeAndSummarizeEmail(input: CategorizationPromptInput) {
+  const completion = await getClient().chat.completions.create({
+    model: "gpt-5-mini",
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are an expert email assistant. Analyze the email and: 1) Choose the BEST matching category (be strict, use 'Others' if uncertain), 2) Create a 2-sentence summary with key action items. Return JSON with categoryId, categoryName, confidence (0-100), and summary.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify(input),
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "EmailAnalysis",
+        schema: {
+          type: "object",
+          properties: {
+            categoryId: { type: "string" },
+            categoryName: { type: "string" },
+            confidence: { type: "number" },
+            summary: { type: "string" },
+          },
+          required: ["categoryId", "categoryName", "confidence", "summary"],
+          additionalProperties: false,
+        },
+      },
+    },
+  });
+
+  const content = completion.choices[0]?.message?.content;
+  if (!content) {
+    throw new Error("Unexpected response format");
+  }
+
+  return JSON.parse(content) as {
+    categoryId: string;
+    categoryName: string;
+    confidence: number;
+    summary: string;
+  };
+}
+
+/**
  * Use AI to extract unsubscribe link from email content
  */
 export async function extractUnsubscribeLinkWithAI(
