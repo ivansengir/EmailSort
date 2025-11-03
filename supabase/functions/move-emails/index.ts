@@ -56,18 +56,34 @@ serve(async (req: Request) => {
     // Verify the target category exists and belongs to the user (using admin client)
     const { data: targetCategory, error: categoryError } = await adminClient
       .from("categories")
-      .select("id, name")
+      .select("id, name, user_id")
       .eq("id", targetCategoryId)
-      .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
-    if (categoryError || !targetCategory) {
-      console.error("[move-emails] Category not found or error:", categoryError);
+    if (categoryError) {
+      console.error("[move-emails] Error fetching category:", categoryError);
       return new Response(
-        JSON.stringify({ error: "Target category not found or access denied", details: categoryError?.message }),
+        JSON.stringify({ error: "Error fetching category", details: categoryError.message }),
+        { status: 500, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!targetCategory) {
+      console.error("[move-emails] Category not found:", targetCategoryId);
+      return new Response(
+        JSON.stringify({ error: "Target category not found" }),
         { status: 404, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
       );
     }
+
+    if (targetCategory.user_id !== user.id) {
+      console.error("[move-emails] Category belongs to different user");
+      return new Response(
+        JSON.stringify({ error: "Access denied to target category" }),
+        { status: 403, headers: { ...corsHeaders(), "Content-Type": "application/json" } }
+      );
+    }
+    
     console.log(`[move-emails] Target category found: ${targetCategory.name}`);
 
     // Get the emails to move (with their current categories) (using admin client)
