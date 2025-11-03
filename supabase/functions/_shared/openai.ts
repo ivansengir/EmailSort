@@ -182,7 +182,7 @@ CRITICAL: Return ONLY the complete URL (including https:// or mailto:) or exactl
 Do not add any explanation, just the URL.`
       }
     ],
-    temperature: 0.1,
+    temperature: 1,
     max_tokens: 300,
   });
 
@@ -258,7 +258,7 @@ Return only JSON.`
       }
     ],
     response_format: { type: "json_object" },
-    temperature: 0.1,
+    temperature: 1,
     max_tokens: 300,
   });
 
@@ -332,7 +332,7 @@ Return only JSON.`
       }
     ],
     response_format: { type: "json_object" },
-    temperature: 0.1,
+    temperature: 1,
     max_tokens: 500,
   });
 
