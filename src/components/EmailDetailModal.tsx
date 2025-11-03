@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Email } from '../types';
 import { X, Eye, EyeOff } from 'lucide-react';
 
@@ -9,6 +9,34 @@ interface Props {
 
 export function EmailDetailModal({ email, onClose }: Props) {
   const [showHtml, setShowHtml] = useState(true);
+
+  // Block body scroll and scroll to top when modal opens
+  useEffect(() => {
+    if (email) {
+      // Save current scroll position
+      const scrollY = window.scrollY;
+      
+      // Scroll to top
+      window.scrollTo(0, 0);
+      
+      // Block body scroll
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+      
+      return () => {
+        // Restore body scroll
+        document.body.style.overflow = '';
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        
+        // Restore scroll position
+        window.scrollTo(0, scrollY);
+      };
+    }
+  }, [email]);
 
   if (!email) {
     return null;
