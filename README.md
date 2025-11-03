@@ -17,7 +17,7 @@ Intelligent email classification and bulk action system with AI agent automation
 
 ### 🤖 AI-Powered Unsubscription
 - **Fully automated**: AI agent navigates pages, fills forms, clicks buttons
-- **Smart detection**: OpenAI GPT-4o-mini extracts unsubscribe links from any language
+- **Smart detection**: OpenAI gpt-5-mini-mini extracts unsubscribe links from any language
 - **Complex interactions**: Handles radio buttons, checkboxes, multi-step forms
 - **Puppeteer automation**: Real browser for JavaScript-heavy pages (MediaMarkt, etc.)
 

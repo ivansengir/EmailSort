@@ -23,7 +23,7 @@ interface CategorizationPromptInput {
 
 export async function categorizeEmail(input: CategorizationPromptInput) {
   const completion = await getClient().chat.completions.create({
-    model: "gpt-4o", // Fastest GPT-4 model, better than 4o-mini and 3.5-turbo
+    model: "gpt-5-mini", // Higher rate limits (200k TPM vs 30k TPM for gpt-5-mini)
     messages: [
       {
         role: "system",
@@ -36,7 +36,7 @@ export async function categorizeEmail(input: CategorizationPromptInput) {
       },
     ],
     response_format: {
-      type: "json_schema", // gpt-4o supports json_schema for better structure
+      type: "json_schema", // gpt-5-mini supports json_schema for better structure
       json_schema: {
         name: "EmailClassification",
         schema: {
@@ -67,7 +67,7 @@ export async function categorizeEmail(input: CategorizationPromptInput) {
 
 export async function summarizeEmail(subject: string, body: string) {
   const completion = await getClient().chat.completions.create({
-    model: "gpt-4o", // Also use gpt-4o for better quality summaries
+    model: "gpt-5-mini", // Also use gpt-5-mini for better quality summaries
     messages: [
       {
         role: "system",
@@ -109,7 +109,7 @@ export async function extractUnsubscribeLinkWithAI(
   console.log("[AI] Email content length:", emailContent.length);
 
   const completion = await getClient().chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "gpt-5-mini",
     messages: [
       {
         role: "system",
@@ -175,7 +175,7 @@ export async function analyzeUnsubscribePageWithAI(
     : pageHtml;
 
   const completion = await getClient().chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "gpt-5-mini",
     messages: [
       {
         role: "system",
@@ -261,7 +261,7 @@ export async function extractFormDataWithAI(pageHtml: string): Promise<Record<st
     : pageHtml;
 
   const completion = await getClient().chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "gpt-5-mini",
     messages: [
       {
         role: "system",

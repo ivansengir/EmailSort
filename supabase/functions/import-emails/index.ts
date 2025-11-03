@@ -342,7 +342,7 @@ serve(async (req: Request) => {
         processedCount++;
         
         // Dynamic delay based on sync mode to avoid OpenAI rate limits
-        // OpenAI gpt-4o-mini: 500 requests/min, 200k tokens/min
+        // OpenAI gpt-5-mini-mini: 500 requests/min, 200k tokens/min
         // For 'all' mode: wait 500ms between emails (max 120/min)
         // For 'last30' mode: wait 300ms between emails (max 200/min)
         // For normal mode: wait 200ms between emails
