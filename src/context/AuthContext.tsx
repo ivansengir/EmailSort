@@ -17,6 +17,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let isHandlingSignIn = false;
 
     // Session debugging - check localStorage every 10 seconds
     const checkStorage = () => {
@@ -105,6 +106,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (event === 'SIGNED_IN' && session) {
         console.log('[AuthContext] Handling SIGNED_IN event');
+        
+        // Prevent multiple simultaneous sign-in handlers
+        if (isHandlingSignIn) {
+          console.log('[AuthContext] Already handling SIGNED_IN, skipping...');
+          return;
+        }
+        
+        isHandlingSignIn = true;
         try {
           const currentUser = await getCurrentUser(session);
           console.log('[AuthContext] User profile received:', currentUser);
@@ -119,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error('[AuthContext] Error during sign in:', error);
         } finally {
           setIsLoading(false);
+          isHandlingSignIn = false;
         }
       } else if (event === 'SIGNED_OUT') {
         console.log('[AuthContext] Handling SIGNED_OUT event');
