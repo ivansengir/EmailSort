@@ -289,3 +289,15 @@ export async function fetchUnsubscribeLogs(limit = 20): Promise<UnsubscribeLog[]
 
   return data as unknown as UnsubscribeLog[];
 }
+
+export async function moveEmailsToCategory(emailIds: string[], targetCategoryId: string) {
+  const { error, data } = await supabase.functions.invoke('move-emails', {
+    body: { emailIds, targetCategoryId },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}

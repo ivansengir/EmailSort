@@ -7,9 +7,10 @@ import {
   invokeEmailSync,
   updateEmailSelection,
   clearSelectionsForCategory,
+  moveEmailsToCategory,
 } from '../lib/data';
 import type { Category, Email } from '../types';
-import { ArrowLeft, Trash2, MailOpen, ShieldCheck, RefreshCcw, Mail, CheckSquare, Square, FileText, Sparkles } from 'lucide-react';
+import { ArrowLeft, Trash2, MailOpen, ShieldCheck, RefreshCcw, Mail, CheckSquare, Square, FileText, Sparkles, FolderInput } from 'lucide-react';
 import { EmailDetailModal } from '../components/EmailDetailModal';
 
 export function CategoryPage() {
@@ -26,6 +27,8 @@ export function CategoryPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [emailPage, setEmailPage] = useState(1);
   const emailsPerPage = 10;
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [isMoving, setIsMoving] = useState(false);
 
   const category = useMemo(
     () => categories.find((cat: Category) => cat.id === categoryId) ?? null,
@@ -157,6 +160,30 @@ export function CategoryPage() {
     }
   }
 
+  async function handleMoveEmails(targetCategoryId: string) {
+    if (!selectedEmails.length) {
+      setToast('Select at least one email first.');
+      return;
+    }
+
+    try {
+      setIsMoving(true);
+      setToast(`Moving ${selectedEmails.length} emails...`);
+      
+      const result = await moveEmailsToCategory(selectedEmails, targetCategoryId);
+      
+      setToast(`✓ Moved ${result.movedCount} emails to ${result.targetCategory}`);
+      setShowMoveModal(false);
+      
+      await loadCategoryData();
+    } catch (error) {
+      console.error('Move emails failed', error);
+      setToast('Failed to move emails. Check console for details.');
+    } finally {
+      setIsMoving(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Header */}
@@ -222,6 +249,14 @@ export function CategoryPage() {
               >
                 <ShieldCheck className="w-4 h-4" />
                 Unsubscribe ({selectedEmails.length})
+              </button>
+              <button
+                onClick={() => setShowMoveModal(true)}
+                disabled={!selectedEmails.length || isMoving}
+                className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/30 transition-all"
+              >
+                <FolderInput className="w-4 h-4" />
+                Move ({selectedEmails.length})
               </button>
             </div>
           </div>
@@ -366,6 +401,53 @@ export function CategoryPage() {
       </main>
 
       <EmailDetailModal email={activeEmail} onClose={() => setActiveEmail(null)} />
+      
+      {/* Move Emails Modal */}
+      {showMoveModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-2xl font-bold text-gray-900 mb-4">
+              Move {selectedEmails.length} email{selectedEmails.length > 1 ? 's' : ''} to:
+            </h3>
+            
+            <div className="space-y-2 max-h-96 overflow-y-auto mb-6">
+              {categories
+                .filter(cat => cat.id !== categoryId) // Don't show current category
+                .map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => handleMoveEmails(cat.id)}
+                    disabled={isMoving}
+                    className="w-full text-left p-4 rounded-xl border-2 border-gray-200 hover:border-indigo-500 hover:bg-indigo-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-900 group-hover:text-indigo-600 mb-1">
+                          {cat.name}
+                        </h4>
+                        <p className="text-sm text-gray-600 line-clamp-1">
+                          {cat.description}
+                        </p>
+                      </div>
+                      <div 
+                        className="w-4 h-4 rounded-full ml-3"
+                        style={{ backgroundColor: cat.color || '#3b82f6' }}
+                      />
+                    </div>
+                  </button>
+                ))}
+            </div>
+            
+            <button
+              onClick={() => setShowMoveModal(false)}
+              disabled={isMoving}
+              className="w-full py-3 px-4 border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-100 transition-all disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* Sync Progress Overlay - Blocks interaction during sync */}
       {isSyncing && syncProgress && (
