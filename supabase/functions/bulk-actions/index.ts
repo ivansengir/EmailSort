@@ -18,7 +18,7 @@ type EmailRow = {
   category_id: string;
   content_text: string | null;
   content_html: string | null;
-  from_email: string | null;
+  to_email: string | null;
 };
 
 type GmailAccountRow = {
@@ -75,7 +75,7 @@ serve(async (req: Request) => {
 
   const { data: emails, error: emailError } = await supabase
     .from("emails")
-    .select("id, gmail_message_id, gmail_thread_id, gmail_account_id, category_id, content_text, content_html, from_email")
+    .select("id, gmail_message_id, gmail_thread_id, gmail_account_id, category_id, content_text, content_html, to_email")
     .in("id", payload.emailIds)
     .eq("user_id", user.id);
 
@@ -169,8 +169,8 @@ serve(async (req: Request) => {
         results.push({ emailId: email.id, status: "deleted" });
       } else if (payload.action === "unsubscribe") {
         console.log(`[bulk-actions] Attempting unsubscribe for email ${email.id}...`);
-        console.log(`[bulk-actions] Email ${email.id} - From: ${email.from_email}, HTML length: ${email.content_html?.length || 0}, Text length: ${email.content_text?.length || 0}`);
-        const attempt = await attemptUnsubscribe(email.content_html, email.content_text, email.from_email || undefined);
+        console.log(`[bulk-actions] Email ${email.id} - To: ${email.to_email}, HTML length: ${email.content_html?.length || 0}, Text length: ${email.content_text?.length || 0}`);
+        const attempt = await attemptUnsubscribe(email.content_html, email.content_text, email.to_email || undefined);
         const { error: logError } = await supabase
           .from("unsubscribe_logs")
           .insert({

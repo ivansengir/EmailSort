@@ -80,9 +80,9 @@ async function attemptAIFormSubmit(pageUrl: string, pageHtml: string): Promise<b
   return false;
 }
 
-export async function attemptUnsubscribe(html: string | null, text: string | null, fromEmail?: string): Promise<UnsubscribeAttempt> {
+export async function attemptUnsubscribe(html: string | null, text: string | null, userEmail?: string): Promise<UnsubscribeAttempt> {
   console.log("[unsubscribe] 🤖 Starting AI-powered unsubscribe...");
-  console.log("[unsubscribe] From email:", fromEmail || "not provided");
+  console.log("[unsubscribe] User email (recipient):", userEmail || "not provided");
   console.log("[unsubscribe] HTML content length:", html?.length || 0);
   console.log("[unsubscribe] Text content length:", text?.length || 0);
 
@@ -178,7 +178,7 @@ export async function attemptUnsubscribe(html: string | null, text: string | nul
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                   url: finalUrl,
-                  email: fromEmail || 'user@example.com' // Pass the real email from the sender
+                  email: userEmail || 'user@example.com' // Pass the recipient's email (the user who wants to unsubscribe)
                 }),
                 signal: AbortSignal.timeout(90000) // 90 second timeout (allows for Render cold start + Puppeteer)
               });
