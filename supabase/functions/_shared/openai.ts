@@ -12,6 +12,36 @@ function getClient(): OpenAI {
 }
 
 /**
+ * Validates OpenAI API response and checks for truncation
+ */
+function validateOpenAIResponse(completion: OpenAI.ChatCompletion, operationName: string): string {
+  const finishReason = completion.choices[0]?.finish_reason;
+  const content = completion.choices[0]?.message?.content;
+  
+  // Check for truncation
+  if (finishReason === "length") {
+    console.error(`[AI] ${operationName}: Response truncated due to token limit:`, {
+      finishReason,
+      usage: completion.usage,
+      partialContent: content?.substring(0, 100)
+    });
+    throw new Error("Response truncated - increase max_completion_tokens");
+  }
+  
+  // Check for empty response
+  if (!content || content.trim() === "") {
+    console.error(`[AI] ${operationName}: Empty response from OpenAI:`, {
+      choices: completion.choices?.length || 0,
+      finishReason,
+      usage: completion.usage
+    });
+    throw new Error("No response from AI - empty content");
+  }
+  
+  return content;
+}
+
+/**
  * Generic retry wrapper for OpenAI API calls with exponential backoff
  */
 async function callOpenAIWithRetry<T>(
@@ -38,12 +68,13 @@ async function callOpenAIWithRetry<T>(
       lastError = error as Error;
       console.error(`[AI] ${operationName}: Attempt ${attempt}/${maxRetries} failed:`, error);
       
-      // Check if it's a rate limit error
+      // Check if it's a rate limit error or truncation (should retry)
       if (error instanceof Error && (
         error.message?.includes('rate_limit') || 
-        error.message?.includes('429')
+        error.message?.includes('429') ||
+        error.message?.includes('truncated')
       )) {
-        console.log(`[AI] ${operationName}: Rate limit detected, will retry...`);
+        console.log(`[AI] ${operationName}: Retryable error detected, will retry...`);
       }
       
       // If this was the last attempt, throw
@@ -97,6 +128,8 @@ export async function categorizeEmail(input: CategorizationPromptInput) {
         },
       },
     },
+    temperature: 1,
+    max_completion_tokens: 4096,
   });
 
   const content = completion.choices[0]?.message?.content;
@@ -125,6 +158,8 @@ export async function summarizeEmail(subject: string, body: string) {
         content: JSON.stringify({ subject, body }),
       },
     ],
+    temperature: 1,
+    max_completion_tokens: 4096,
   });
 
   const content = completion.choices[0]?.message?.content;
@@ -170,6 +205,8 @@ export async function categorizeAndSummarizeEmail(input: CategorizationPromptInp
         },
       },
     },
+    temperature: 1,
+    max_completion_tokens: 4096,
   });
 
   const content = completion.choices[0]?.message?.content;
@@ -229,7 +266,7 @@ Do not add any explanation, just the URL.`
       }
     ],
     temperature: 1,
-    max_completion_tokens: 300,
+    max_completion_tokens: 4096,
   });
 
   const result = completion.choices[0]?.message?.content?.trim() || "NO_LINK";
@@ -309,21 +346,11 @@ Return only JSON.`
       ],
       response_format: { type: "json_object" },
       temperature: 1,
-      max_completion_tokens: 300,
+      max_completion_tokens: 4096,
     });
 
-    const result = completion.choices[0]?.message?.content;
-    
-    if (!result) {
-      // Log detailed error info
-      console.error("[AI] Empty response from OpenAI:", {
-        choices: completion.choices?.length || 0,
-        finishReason: completion.choices[0]?.finish_reason,
-        usage: completion.usage
-      });
-      throw new Error("No response from AI - empty content");
-    }
-
+    // Validate response and check for truncation
+    const result = validateOpenAIResponse(completion, "Analyze Page");
     console.log("[AI] ✓ Page analysis response:", result);
     return result;
   });
@@ -398,16 +425,16 @@ Return only JSON.`
     ],
     response_format: { type: "json_object" },
     temperature: 1,
-    max_completion_tokens: 500,
+    max_completion_tokens: 4096,
   });
 
-  const result = completion.choices[0]?.message?.content;
-  if (!result) {
+  try {
+    const result = validateOpenAIResponse(completion, "Extract Form Data");
+    const formData = JSON.parse(result);
+    console.log("[AI] ✓ Extracted form data:", Object.keys(formData).length, "fields");
+    return formData;
+  } catch (error) {
+    console.error("[AI] Failed to extract or parse form data:", error);
     return {};
   }
-
-  const formData = JSON.parse(result);
-  console.log("[AI] ✓ Extracted form data:", Object.keys(formData).length, "fields");
-  
-  return formData;
 }
