@@ -187,13 +187,21 @@ export async function attemptUnsubscribe(html: string | null, text: string | nul
                 const mcpResult = await mcpResponse.json();
                 console.log("[unsubscribe] MCP result:", mcpResult);
                 
-                // Be optimistic: If MCP server responded, assume success unless explicitly failed
-                if (mcpResult.success !== false) {
-                  console.log("[unsubscribe] ✅ MCP server processed the request, marking as success!");
+                // Trust the MCP server's result
+                if (mcpResult.success === true) {
+                  console.log("[unsubscribe] ✅ MCP server confirmed success!");
                   return {
                     status: "success",
-                    method: "ai-auto",
+                    method: "form-auto",
                     target: finalUrl
+                  };
+                } else {
+                  console.log("[unsubscribe] ❌ MCP server could not confirm success:", mcpResult.message);
+                  return {
+                    status: "error",
+                    method: "form-auto",
+                    target: finalUrl,
+                    error: mcpResult.message || "Form submission could not be verified"
                   };
                 }
               } else {
