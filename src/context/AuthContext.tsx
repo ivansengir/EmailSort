@@ -63,7 +63,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (currentUser) {
               console.log('[AuthContext] Syncing Gmail account (background)...');
               syncPrimaryGmailAccount(currentUser, session)
-                .then(() => console.log('[AuthContext] Gmail sync complete'))
+                .then(async (gmailAccount) => {
+                  console.log('[AuthContext] Gmail sync complete');
+                  
+                  // If this is the first time, automatically import emails
+                  if (!currentUser.has_completed_first_import && gmailAccount) {
+                    console.log('[AuthContext] First time user - triggering automatic email import...');
+                    try {
+                      const { invokeEmailSync } = await import('../lib/data');
+                      await invokeEmailSync(gmailAccount.id);
+                      console.log('[AuthContext] Automatic first import completed successfully');
+                      
+                      // Mark as completed
+                      await supabase
+                        .from('users')
+                        .update({ has_completed_first_import: true })
+                        .eq('id', currentUser.id);
+                      
+                      // Update local user state
+                      setUser({ ...currentUser, has_completed_first_import: true });
+                    } catch (importError) {
+                      console.error('[AuthContext] Automatic first import failed:', importError);
+                      // Don't block the login, user can manually sync later
+                    }
+                  }
+                })
                 .catch((syncError) => console.warn('[AuthContext] Gmail sync failed:', syncError));
             }
           } catch (userError) {
@@ -121,7 +145,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           if (currentUser) {
             syncPrimaryGmailAccount(currentUser, session)
-              .then(() => console.log('[AuthContext] Gmail sync complete (event)'))
+              .then(async (gmailAccount) => {
+                console.log('[AuthContext] Gmail sync complete (event)');
+                
+                // If this is the first time, automatically import emails
+                if (!currentUser.has_completed_first_import && gmailAccount) {
+                  console.log('[AuthContext] First time user - triggering automatic email import (event)...');
+                  try {
+                    const { invokeEmailSync } = await import('../lib/data');
+                    await invokeEmailSync(gmailAccount.id);
+                    console.log('[AuthContext] Automatic first import completed successfully (event)');
+                    
+                    // Mark as completed
+                    await supabase
+                      .from('users')
+                      .update({ has_completed_first_import: true })
+                      .eq('id', currentUser.id);
+                    
+                    // Update local user state
+                    setUser({ ...currentUser, has_completed_first_import: true });
+                  } catch (importError) {
+                    console.error('[AuthContext] Automatic first import failed (event):', importError);
+                    // Don't block the login, user can manually sync later
+                  }
+                }
+              })
               .catch((error) => console.warn('[AuthContext] Gmail sync failed (event):', error));
           }
         } catch (error) {

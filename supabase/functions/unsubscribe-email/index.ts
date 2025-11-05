@@ -51,7 +51,7 @@ serve(async (req: Request) => {
 
   const { data: email, error: emailError } = await supabase
     .from("emails")
-    .select("id, content_text, content_html")
+    .select("id, content_text, content_html, from_email")
     .eq("id", payload.emailId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -67,9 +67,10 @@ serve(async (req: Request) => {
   }
 
   console.log("[unsubscribe-email] Attempting unsubscribe for email:", email.id);
+  console.log("[unsubscribe-email] From:", email.from_email);
   console.log("[unsubscribe-email] Email content lengths - HTML:", email.content_html?.length || 0, "Text:", email.content_text?.length || 0);
   console.log("[unsubscribe-email] First 500 chars of HTML:", email.content_html?.substring(0, 500));
-  const attempt = await attemptUnsubscribe(email.content_html, email.content_text);
+  const attempt = await attemptUnsubscribe(email.content_html, email.content_text, email.from_email || undefined);
   console.log("[unsubscribe-email] Unsubscribe result:", attempt.status, attempt.method, "target:", attempt.target);
 
   const { error: logError, data: logRecord } = await supabase

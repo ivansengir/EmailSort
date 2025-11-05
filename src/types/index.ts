@@ -3,6 +3,7 @@ export interface User {
   auth_id: string;
   email: string;
   display_name: string | null;
+  has_completed_first_import: boolean;
   created_at: string;
   updated_at: string;
 }
