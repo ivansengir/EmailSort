@@ -225,9 +225,11 @@ serve(async (req: Request) => {
         searchQuery = "in:inbox";
         console.log("[import-emails] Full sync mode - searching in:inbox");
       } else {
-        // Incremental sync - get emails after last sync
-        searchQuery = `after:${account.last_sync_at}`;
-        console.log("[import-emails] Incremental sync - searching after:", account.last_sync_at);
+        // Incremental sync - get emails received in the last 7 days only
+        // This prevents re-processing old emails that might still be in inbox
+        const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
+        searchQuery = `in:inbox after:${sevenDaysAgo}`;
+        console.log("[import-emails] Incremental sync - searching inbox emails from last 7 days:", sevenDaysAgo);
       }
       
       console.log("[import-emails] Final search query:", searchQuery);
@@ -240,6 +242,23 @@ serve(async (req: Request) => {
       let processedCount = 0;
       let skippedCount = 0;
       let errorCount = 0;
+
+      // OPTIMIZED: Get all existing gmail_message_ids for this account in one query
+      console.log("[import-emails] Fetching existing message IDs to prevent duplicates...");
+      const { data: existingMessages } = await supabase
+        .from("emails")
+        .select("gmail_message_id")
+        .eq("gmail_account_id", account.id);
+      
+      const existingMessageIds = new Set<string>();
+      if (existingMessages) {
+        for (const msg of existingMessages) {
+          if (msg.gmail_message_id) {
+            existingMessageIds.add(msg.gmail_message_id);
+          }
+        }
+      }
+      console.log(`[import-emails] Found ${existingMessageIds.size} existing emails in database`);
 
       // OPTIMIZED: Process in parallel batches of 10 emails
       const BATCH_SIZE = 10;
@@ -257,15 +276,8 @@ serve(async (req: Request) => {
         const batchResults = await Promise.allSettled(
           batch.map(async (messageMeta) => {
             try {
-              // Check if already exists
-              const existing = await supabase
-                .from("emails")
-                .select("id")
-                .eq("gmail_account_id", account.id)
-                .eq("gmail_message_id", messageMeta.id)
-                .maybeSingle();
-
-              if (existing.data) {
+              // Check if already exists using in-memory Set (much faster)
+              if (existingMessageIds.has(messageMeta.id)) {
                 return { status: 'skipped' as const, messageId: messageMeta.id };
               }
 
