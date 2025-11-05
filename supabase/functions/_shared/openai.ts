@@ -183,7 +183,7 @@ Do not add any explanation, just the URL.`
       }
     ],
     temperature: 1,
-    max_tokens: 300,
+    max_completion_tokens: 300,
   });
 
   const result = completion.choices[0]?.message?.content?.trim() || "NO_LINK";
@@ -259,7 +259,7 @@ Return only JSON.`
     ],
     response_format: { type: "json_object" },
     temperature: 1,
-    max_tokens: 300,
+    max_completion_tokens: 300,
   });
 
   const result = completion.choices[0]?.message?.content;
@@ -333,7 +333,7 @@ Return only JSON.`
     ],
     response_format: { type: "json_object" },
     temperature: 1,
-    max_tokens: 500,
+    max_completion_tokens: 500,
   });
 
   const result = completion.choices[0]?.message?.content;
