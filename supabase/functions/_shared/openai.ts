@@ -11,6 +11,52 @@ function getClient(): OpenAI {
   return client;
 }
 
+/**
+ * Generic retry wrapper for OpenAI API calls with exponential backoff
+ */
+async function callOpenAIWithRetry<T>(
+  operationName: string,
+  operation: () => Promise<T>,
+  maxRetries = 3
+): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 1) {
+        const delay = Math.pow(2, attempt - 1) * 1000; // 2s, 4s, 8s
+        console.log(`[AI] ${operationName}: Retry attempt ${attempt}/${maxRetries} after ${delay}ms delay...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+      console.log(`[AI] ${operationName}: Calling OpenAI API (attempt ${attempt}/${maxRetries})...`);
+      const result = await operation();
+      console.log(`[AI] ${operationName}: ✓ Success`);
+      return result;
+      
+    } catch (error) {
+      lastError = error as Error;
+      console.error(`[AI] ${operationName}: Attempt ${attempt}/${maxRetries} failed:`, error);
+      
+      // Check if it's a rate limit error
+      if (error instanceof Error && (
+        error.message?.includes('rate_limit') || 
+        error.message?.includes('429')
+      )) {
+        console.log(`[AI] ${operationName}: Rate limit detected, will retry...`);
+      }
+      
+      // If this was the last attempt, throw
+      if (attempt === maxRetries) {
+        throw new Error(`${operationName} failed after ${maxRetries} attempts: ${lastError?.message}`);
+      }
+    }
+  }
+
+  // Should never reach here, but TypeScript needs it
+  throw new Error(`${operationName} failed: ${lastError?.message || 'Unknown error'}`);
+}
+
 interface CategorizationPromptInput {
   categories: Array<{ id: string; name: string; description: string }>;
   email: {
@@ -224,16 +270,20 @@ export async function analyzeUnsubscribePageWithAI(
     ? pageHtml.substring(0, 12000) + "...[truncated]" 
     : pageHtml;
 
-  const completion = await getClient().chat.completions.create({
-    model: "gpt-5-mini",
-    messages: [
-      {
-        role: "system",
-        content: "You are a web page analyzer. Return only valid JSON with the analysis."
-      },
-      {
-        role: "user",
-        content: `Analyze this unsubscribe page and determine the status:
+  const htmlLength = truncatedHtml.length;
+  console.log(`[AI] HTML length: ${htmlLength} characters (${Math.ceil(htmlLength / 4)} estimated tokens)`);
+
+  const completion = await callOpenAIWithRetry("Analyze Unsubscribe Page", async () => {
+    const completion = await getClient().chat.completions.create({
+      model: "gpt-5-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You are a web page analyzer. Return only valid JSON with the analysis."
+        },
+        {
+          role: "user",
+          content: `Analyze this unsubscribe page and determine the status:
 
 Page URL: ${pageUrl}
 
@@ -255,19 +305,34 @@ Guidelines:
 - "unknown": Cannot determine
 
 Return only JSON.`
-      }
-    ],
-    response_format: { type: "json_object" },
-    temperature: 1,
-    max_completion_tokens: 300,
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 1,
+      max_completion_tokens: 300,
+    });
+
+    const result = completion.choices[0]?.message?.content;
+    
+    if (!result) {
+      // Log detailed error info
+      console.error("[AI] Empty response from OpenAI:", {
+        choices: completion.choices?.length || 0,
+        finishReason: completion.choices[0]?.finish_reason,
+        usage: completion.usage
+      });
+      throw new Error("No response from AI - empty content");
+    }
+
+    console.log("[AI] ✓ Page analysis response:", result);
+    return result;
   });
 
-  const result = completion.choices[0]?.message?.content;
-  if (!result) {
-    throw new Error("No response from AI");
-  }
+  return parseAnalysisResult(completion);
+}
 
-  console.log("[AI] Page analysis response:", result);
+// Helper function to parse the analysis result
+function parseAnalysisResult(result: string) {
 
   const analysis = JSON.parse(result);
   
